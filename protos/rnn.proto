@@ -1,0 +1,25 @@
+syntax = "proto2";
+import "protos/hyperparams.proto";
+
+message RNN {
+  oneof rnn_oneof {
+    BiLSTM bilstm = 3;
+  }
+}
+
+message BiLSTM {
+  // Number of hidden layers.
+  optional int32 number_of_layers = 1 [default = 1];
+
+  // Number of hidden units.
+  optional int32 hidden_units = 2 [default = 300];
+
+  // Keep probability of the input.
+  optional float input_keep_prob = 3 [default = 1.0];
+
+  // Keep probability of the output.
+  optional float output_keep_prob = 4 [default = 1.0];
+
+  // Keep probability of the state.
+  optional float state_keep_prob = 5 [default = 1.0];
+}

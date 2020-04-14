@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+// RCNN configs.
+message RCNN {
+  // Name of the model.
+  optional string feature_extractor_name = 1 [default = 'inception_v4'];
+
+  // Variable scope of the feature extractor.
+  optional string feature_extractor_scope = 2 [default = 'InceptionV4'];
+
+  // Feature map name to be extracted.
+  optional string feature_extractor_endpoint = 3 [default = 'PreLogitsFlatten'];
+
+  // Path to the pre-trained checkpoint file.
+  optional string feature_extractor_checkpoint = 4;
+}
