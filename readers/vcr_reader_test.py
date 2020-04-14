@@ -7,7 +7,7 @@ from absl import logging
 import tensorflow as tf
 
 import reader
-from vcr_text_only_reader import InputFields
+from vcr_fields import InputFields
 
 from google.protobuf import text_format
 from protos import reader_pb2
@@ -23,7 +23,7 @@ class VCRReaderTest(tf.test.TestCase):
         input_pattern: "output/uncased/VCR/val.record-00000-of-00005"
         shuffle_buffer_size: 10
         interleave_cycle_length: 1
-        batch_size: 3
+        batch_size: 8
         prefetch_buffer_size: 8000
       }
     """
@@ -31,13 +31,15 @@ class VCRReaderTest(tf.test.TestCase):
 
     dataset = reader.get_input_fn(options, is_training=False)()
     for elem in dataset.take(1):
-      import pdb
-      pdb.set_trace()
       for key, value in elem.items():
-        logging.info('=' * 64)
-        logging.info(key)
-        logging.info(value)
-      j = 1
+        logging.info('%s: %s', key, value.shape)
+      logging.info('Examples:')
+      logging.info('answer_choices: %s', elem['answer_choices'][0])
+      logging.info('answer_choices_tag: %s', elem['answer_choices_tag'][0])
+      logging.info('answer_choices_len: %s', elem['answer_choices_len'][0])
+      logging.info('rationale_choices: %s', elem['rationale_choices'][0])
+      logging.info('rationale_choices_tag: %s', elem['rationale_choices_tag'][0])
+      logging.info('rationale_choices_len: %s', elem['rationale_choices_len'][0])
 
 
 if __name__ == '__main__':

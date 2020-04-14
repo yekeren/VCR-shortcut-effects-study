@@ -44,13 +44,13 @@ def _update_decoded_example(decoded_example, options):
     decoded_example: The same instance with content modified.
   """
   # Number of objects.
-  object_bboxes = decoded_example[InputFields.object_bboxes]
-  num_objects = tf.shape(object_bboxes)[0]
+  detection_boxes = decoded_example[InputFields.detection_boxes]
+  num_detections = tf.shape(detection_boxes)[0]
 
   # Question length.
-  question = decoded_example[InputFields.question]
+  question = decoded_example.pop(TFExampleFields.question)
+  question_tag = decoded_example.pop(TFExampleFields.question_tag)
   question_len = tf.shape(question)[0]
-  question_tag = decoded_example[InputFields.question_tag]
 
   # Answer choices and lengths.
   answer_choices_list = [
@@ -58,8 +58,7 @@ def _update_decoded_example(decoded_example, options):
       for i in range(1, 1 + NUM_CHOICES)
   ]
   answer_choices_with_question_list = [
-      tf.concat([question, ['[SEP]'], x], 0)
-      for x in answer_choices_list
+      tf.concat([question, ['[SEP]'], x], 0) for x in answer_choices_list
   ]
   (answer_choices, answer_choices_len) = _pad_sequences(answer_choices_list)
   (answer_choices_with_question, answer_choices_with_question_len
@@ -71,8 +70,7 @@ def _update_decoded_example(decoded_example, options):
       for i in range(1, 1 + NUM_CHOICES)
   ]
   answer_choices_with_question_tag_list = [
-      tf.concat([question_tag, [-1], x], 0)
-      for x in answer_choices_tag_list
+      tf.concat([question_tag, [-1], x], 0) for x in answer_choices_tag_list
   ]
   answer_choices_tag, _ = _pad_sequences(answer_choices_tag_list, -1)
   answer_choices_with_question_tag, _ = _pad_sequences(
@@ -90,8 +88,7 @@ def _update_decoded_example(decoded_example, options):
       for i in range(1, 1 + NUM_CHOICES)
   ]
   rationale_choices_with_question_list = [
-      tf.concat(
-          [question, ['[SEP]'], answer, ['[SEP]'], x], 0)
+      tf.concat([question, ['[SEP]'], answer, ['[SEP]'], x], 0)
       for x in rationale_choices_list
   ]
   (rationale_choices,
@@ -117,42 +114,16 @@ def _update_decoded_example(decoded_example, options):
   image_shape = tf.shape(image)
 
   decoded_example.update({
-      InputFields.img_data:
-          image,
-      InputFields.img_height:
-          image_shape[0],
-      InputFields.img_width:
-          image_shape[1],
-      InputFields.num_objects:
-          num_objects,
-      InputFields.question_tag:
-          question_tag,
-      InputFields.question_len:
-          question_len,
-      InputFields.answer_choices:
-          answer_choices,
-      InputFields.answer_choices_tag:
-          answer_choices_tag,
-      InputFields.answer_choices_len:
-          answer_choices_len,
-      InputFields.answer_choices_with_question:
-          answer_choices_with_question,
-      InputFields.answer_choices_with_question_tag:
-          answer_choices_with_question_tag,
-      InputFields.answer_choices_with_question_len:
-          answer_choices_with_question_len,
-      InputFields.rationale_choices:
-          rationale_choices,
-      InputFields.rationale_choices_tag:
-          rationale_choices_tag,
-      InputFields.rationale_choices_len:
-          rationale_choices_len,
-      InputFields.rationale_choices_with_question:
-          rationale_choices_with_question,
-      InputFields.rationale_choices_with_question_tag:
-          rationale_choices_with_question_tag,
-      InputFields.rationale_choices_with_question_len:
-          rationale_choices_with_question_len,
+      InputFields.img_data: image,
+      InputFields.img_height: image_shape[0],
+      InputFields.img_width: image_shape[1],
+      InputFields.num_detections: num_detections,
+      InputFields.answer_choices: answer_choices_with_question,
+      InputFields.answer_choices_tag: answer_choices_with_question_tag,
+      InputFields.answer_choices_len: answer_choices_with_question_len,
+      InputFields.rationale_choices: rationale_choices_with_question,
+      InputFields.rationale_choices_tag: rationale_choices_with_question_tag,
+      InputFields.rationale_choices_len: rationale_choices_with_question_len,
   })
 
   return decoded_example
@@ -176,13 +147,13 @@ def _parse_single_example(example, options):
       TFExampleFields.annot_id: tf.io.FixedLenFeature([], tf.string),
       TFExampleFields.answer_label: tf.io.FixedLenFeature([], tf.int64),
       TFExampleFields.rationale_label: tf.io.FixedLenFeature([], tf.int64),
-      TFExampleFields.img_bbox_label: tf.io.VarLenFeature(tf.string),
-      TFExampleFields.img_bbox_score: tf.io.VarLenFeature(tf.float32),
+      TFExampleFields.detection_classes: tf.io.VarLenFeature(tf.string),
+      TFExampleFields.detection_scores: tf.io.VarLenFeature(tf.float32),
       TFExampleFields.question: tf.io.VarLenFeature(tf.string),
       TFExampleFields.question_tag: tf.io.VarLenFeature(tf.int64),
   }
-  for bbox_key in TFExampleFields.img_bbox_field_keys:
-    bbox_field = os.path.join(TFExampleFields.img_bbox_scope, bbox_key)
+  for bbox_key in TFExampleFields.detection_boxes_keys:
+    bbox_field = os.path.join(TFExampleFields.detection_boxes_scope, bbox_key)
     keys_to_features[bbox_field] = tf.io.VarLenFeature(tf.float32)
   for i in range(1, 1 + NUM_CHOICES):
     keys_to_features.update({
@@ -214,20 +185,20 @@ def _parse_single_example(example, options):
           tfexample_decoder.Image(image_key=TFExampleFields.img_encoded,
                                   format_key=TFExampleFields.img_format,
                                   shape=None),
-      InputFields.object_bboxes:
+      InputFields.detection_boxes:
           tfexample_decoder.BoundingBox(
-              keys=TFExampleFields.img_bbox_field_keys,
-              prefix=TFExampleFields.img_bbox_scope),
-      InputFields.object_labels:
-          tfexample_decoder.Tensor(tensor_key=TFExampleFields.img_bbox_label,
+              keys=TFExampleFields.detection_boxes_keys,
+              prefix=TFExampleFields.detection_boxes_scope),
+      InputFields.detection_classes:
+          tfexample_decoder.Tensor(tensor_key=TFExampleFields.detection_classes,
                                    default_value=''),
-      InputFields.object_scores:
-          tfexample_decoder.Tensor(tensor_key=TFExampleFields.img_bbox_score,
+      InputFields.detection_scores:
+          tfexample_decoder.Tensor(tensor_key=TFExampleFields.detection_scores,
                                    default_value=0),
-      InputFields.question:
+      TFExampleFields.question:
           tfexample_decoder.Tensor(tensor_key=TFExampleFields.question,
                                    default_value=PAD),
-      InputFields.question_tag:
+      TFExampleFields.question_tag:
           tfexample_decoder.Tensor(tensor_key=TFExampleFields.question_tag,
                                    default_value=-1),
   }
@@ -295,60 +266,42 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
                         num_parallel_calls=options.num_parallel_calls)
 
   padded_shapes = {
-      InputFields.img_id: [],
       InputFields.annot_id: [],
       InputFields.answer_label: [],
       InputFields.rationale_label: [],
+      InputFields.img_id: [],
       InputFields.img_data: [None, None, 3],
       InputFields.img_height: [],
       InputFields.img_width: [],
-      InputFields.num_objects: [],
-      InputFields.object_bboxes: [None, 4],
-      InputFields.object_labels: [None],
-      InputFields.object_scores: [None],
-      InputFields.question: [None],
-      InputFields.question_tag: [None],
-      InputFields.question_len: [],
+      InputFields.num_detections: [],
+      InputFields.detection_boxes: [None, 4],
+      InputFields.detection_classes: [None],
+      InputFields.detection_scores: [None],
       InputFields.answer_choices: [NUM_CHOICES, None],
       InputFields.answer_choices_tag: [NUM_CHOICES, None],
       InputFields.answer_choices_len: [NUM_CHOICES],
-      InputFields.answer_choices_with_question: [NUM_CHOICES, None],
-      InputFields.answer_choices_with_question_tag: [NUM_CHOICES, None],
-      InputFields.answer_choices_with_question_len: [NUM_CHOICES],
       InputFields.rationale_choices: [NUM_CHOICES, None],
       InputFields.rationale_choices_tag: [NUM_CHOICES, None],
       InputFields.rationale_choices_len: [NUM_CHOICES],
-      InputFields.rationale_choices_with_question: [NUM_CHOICES, None],
-      InputFields.rationale_choices_with_question_tag: [NUM_CHOICES, None],
-      InputFields.rationale_choices_with_question_len: [NUM_CHOICES],
   }
   padding_values = {
-      InputFields.img_id: '',
       InputFields.annot_id: '',
       InputFields.answer_label: -1,
       InputFields.rationale_label: -1,
+      InputFields.img_id: '',
       InputFields.img_data: tf.constant(0, dtype=tf.uint8),
       InputFields.img_height: 0,
       InputFields.img_width: 0,
-      InputFields.num_objects: 0,
-      InputFields.object_bboxes: 0.0,
-      InputFields.object_labels: '',
-      InputFields.object_scores: 0.0,
-      InputFields.question: PAD,
-      InputFields.question_tag: -1,
-      InputFields.question_len: 0,
+      InputFields.num_detections: 0,
+      InputFields.detection_boxes: 0.0,
+      InputFields.detection_classes: '',
+      InputFields.detection_scores: 0.0,
       InputFields.answer_choices: PAD,
       InputFields.answer_choices_tag: -1,
       InputFields.answer_choices_len: 0,
-      InputFields.answer_choices_with_question: PAD,
-      InputFields.answer_choices_with_question_tag: -1,
-      InputFields.answer_choices_with_question_len: 0,
       InputFields.rationale_choices: PAD,
       InputFields.rationale_choices_tag: -1,
       InputFields.rationale_choices_len: 0,
-      InputFields.rationale_choices_with_question: PAD,
-      InputFields.rationale_choices_with_question_tag: -1,
-      InputFields.rationale_choices_with_question_len: 0,
   }
   dataset = dataset.padded_batch(batch_size,
                                  padded_shapes=padded_shapes,
