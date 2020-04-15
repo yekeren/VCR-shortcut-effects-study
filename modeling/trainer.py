@@ -9,7 +9,7 @@ import tensorflow as tf
 from modeling.utils import optimization
 from modeling.utils import learning_rate_schedule
 
-from vcr import builder
+from models import builder
 from readers import reader
 from protos import pipeline_pb2
 
