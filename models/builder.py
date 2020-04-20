@@ -3,10 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from protos import model_pb2
+from models.vbert import VBERT
 from models.vbert_ft import VBertFt 
+from models.vbert_ft_offline import VBertFtOffline
 
 MODELS = {
+    model_pb2.VBERT.ext: VBERT,
     model_pb2.VBertFt.ext: VBertFt,
+    model_pb2.VBertFtOffline.ext: VBertFtOffline,
 }
 
 
