@@ -275,15 +275,19 @@ class VBertFtOffline(ModelBase):
     with slim.arg_scope(self._slim_fc_scope):
       detection_features = slim.fully_connected(detection_features,
                                                 self._bert_config.hidden_size,
-                                                activation_fn=tf.nn.relu,
-                                                scope='detection/hidden')
-      detection_features = slim.dropout(detection_features,
-                                        keep_prob=options.dropout_keep_prob,
-                                        is_training=is_training)
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
                                                 activation_fn=None,
                                                 scope='detection/project')
+      # detection_features = slim.fully_connected(detection_features,
+      #                                           self._bert_config.hidden_size,
+      #                                           activation_fn=tf.nn.relu,
+      #                                           scope='detection/project')
+      # detection_features = slim.dropout(detection_features,
+      #                                   keep_prob=options.dropout_keep_prob,
+      #                                   is_training=is_training)
+      # detection_features = slim.fully_connected(detection_features,
+      #                                           self._bert_config.hidden_size,
+      #                                           activation_fn=None,
+      #                                           scope='detection/adaptation')
 
     # Ground objects.
     choice_lengths = inputs[self._field_choices_len]

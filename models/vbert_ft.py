@@ -12,6 +12,7 @@ from protos import model_pb2
 from modeling.layers import token_to_id
 from modeling.models import fast_rcnn
 from modeling.utils import hyperparams
+from modeling.utils import visualization
 from models.model_base import ModelBase
 
 from readers.vcr_fields import InputFields
@@ -60,7 +61,8 @@ def remove_detections(num_detections,
   detection_boxes = detection_boxes[:, :max_num_detections, :]
   detection_classes = detection_classes[:, :max_num_detections]
   detection_scores = detection_scores[:, :max_num_detections]
-  return (num_detections, detection_scores, detection_classes, detection_boxes)
+  return (max_num_detections, num_detections, detection_scores,
+          detection_classes, detection_boxes)
 
 
 def convert_to_batch_coordinates(detection_boxes, height, width, batch_height,
@@ -97,6 +99,46 @@ def insert_image_box(num_detections, detection_scores, detection_classes,
   return num_detections, detection_scores, detection_classes, detection_boxes
 
 
+def preprocess_tags(tags, max_num_detections):
+  """Preprocesses tags.
+
+  Args:
+    tags: A [batch, NUM_CHOICES, max_caption_len] int tensor.
+    max_num_detections: A scalar int tensor.
+  """
+  ones = tf.ones_like(tags, tf.int32)
+  tags = tf.where(tags >= max_num_detections, -ones, tags)
+  tags = tf.where(tags < 0, -ones, tags + 1)
+  return tags
+
+
+def ground_detection_features(detection_features, tags):
+  """Grounds tag sequence using detection features.
+
+  Args:
+    detection_features: A [batch, max_num_detections, feature_dims] float tensor.
+    tags: A [batch, NUM_CHOICES, max_seq_len] int tensor.
+
+  Returns:
+    grounded_detection_features: A [batch, NUM_CHOICES, max_seq_len, 
+      feature_dims] float tensor.
+  """
+  # Add ZEROs to the end.
+  batch_size, _, dims = detection_features.shape
+  detection_features_padded = tf.concat(
+      [detection_features, tf.zeros([batch_size, 1, dims])], 1)
+
+  tag_features = []
+  for tag_tensor in tf.unstack(tags, axis=1):
+    indices = tf.tile(tf.expand_dims(tf.range(batch_size), axis=1),
+                      [1, tf.shape(tag_tensor)[1]])
+    indices = tf.stack([indices, tag_tensor], -1)
+    tag_features.append(tf.gather_nd(detection_features_padded, indices))
+
+  tag_features = tf.stack(tag_features, axis=1)
+  return tag_features
+
+
 class VBertFt(ModelBase):
   """Finetune the VBert model to solve the VCR task."""
 
@@ -126,8 +168,14 @@ class VBertFt(ModelBase):
       self._field_choices_tag = InputFields.answer_choices_tag
       self._field_choices_len = InputFields.answer_choices_len
 
-  def create_bert_input_tensors(self, num_detections, detection_classes,
-                                detection_features, caption, caption_len):
+  def create_bert_input_tensors(self,
+                                num_detections,
+                                detection_classes,
+                                detection_features,
+                                caption,
+                                caption_len,
+                                caption_tag_features,
+                                use_detection_class_labels=True):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -151,29 +199,38 @@ class VBertFt(ModelBase):
     max_detections = tf.shape(detection_features)[1]
     input_masks = tf.concat([
         mask_one,
-        tf.sequence_mask(num_detections, maxlen=max_detections), mask_one,
+        tf.sequence_mask(num_detections, maxlen=max_detections),
         tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_one
     ], -1)
 
     # Create input tokens.
     token_cls = tf.fill([batch_size, 1], CLS)
     token_sep = tf.fill([batch_size, 1], SEP)
-    detection_classes_masked = tf.fill([batch_size, max_detections], MASK)
+    if not use_detection_class_labels:
+      detection_classes = tf.fill([batch_size, max_detections], MASK)
+
     input_tokens = tf.concat(
-        [token_cls, detection_classes_masked, token_sep, caption, token_sep],
-        axis=-1)
+        [token_cls, detection_classes, caption, token_sep], axis=-1)
     input_ids = token_to_id_func(input_tokens)
 
     # Create input features.
-    feature_dims = detection_features.shape[-1]
+    zeros = tf.fill([batch_size, 1, detection_features.shape[-1]], 0.0)
     input_features = tf.concat([
-        tf.fill([batch_size, 1, feature_dims], 0.0), detection_features,
-        tf.fill([batch_size, 2 + max_caption_len, feature_dims], 0.0)
+        zeros,
+        detection_features,
+        caption_tag_features,
+        zeros,
     ], 1)
     return input_ids, input_masks, input_features
 
-  def image_text_matching(self, num_detections, detection_classes,
-                          detection_features, caption, caption_len):
+  def image_text_matching(self,
+                          num_detections,
+                          detection_classes,
+                          detection_features,
+                          caption,
+                          caption_len,
+                          caption_tag_features=None,
+                          use_detection_class_labels=True):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -188,7 +245,7 @@ class VBertFt(ModelBase):
     """
     (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
         num_detections, detection_classes, detection_features, caption,
-        caption_len)
+        caption_len, caption_tag_features, use_detection_class_labels)
     bert_model = BertModel(self._bert_config,
                            self._is_training,
                            input_ids=input_ids,
@@ -223,7 +280,7 @@ class VBertFt(ModelBase):
     batch_size = image.shape[0]
 
     # Remove boxes if there are too many.
-    (num_detections, detection_scores, detection_classes,
+    (max_num_detections, num_detections, detection_scores, detection_classes,
      detection_boxes) = remove_detections(num_detections,
                                           detection_scores,
                                           detection_classes,
@@ -248,25 +305,52 @@ class VBertFt(ModelBase):
     with slim.arg_scope(self._slim_fc_scope):
       detection_features = slim.fully_connected(detection_features,
                                                 self._bert_config.hidden_size,
+                                                activation_fn=tf.nn.relu,
+                                                scope='detection/hidden')
+      detection_features = slim.dropout(detection_features,
+                                        keep_prob=options.dropout_keep_prob,
+                                        is_training=is_training)
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
                                                 activation_fn=None,
                                                 scope='detection/project')
+    # image_vis = visualization.draw_bounding_boxes_on_image_tensors(
+    #     image, num_detections, detection_boxes, detection_classes,
+    #     detection_scores)
+    # tf.summary.image('detection/vis', image_vis)
+
+    # Ground objects.
+    choice_lengths = inputs[self._field_choices_len]
+    choice_captions = inputs[self._field_choices]
+    choice_tags = inputs[self._field_choices_tag]
+
+    choice_tags = preprocess_tags(choice_tags, max_num_detections)
+    choice_features = ground_detection_features(detection_features, choice_tags)
 
     # Create BERT prediction.
-    choice_lengths = tf.unstack(inputs[self._field_choices_len], axis=1)
-    choice_captions = tf.unstack(inputs[self._field_choices], axis=1)
-    choice_tags = tf.unstack(inputs[self._field_choices_tag], axis=1)
+    choice_lengths = tf.unstack(choice_lengths, axis=1)
+    choice_captions = tf.unstack(choice_captions, axis=1)
+    choice_tags = tf.unstack(choice_tags, axis=1)
+    choice_tag_features = tf.unstack(choice_features, axis=1)
     assert (NUM_CHOICES == len(choice_captions) == len(choice_lengths) ==
-            len(choice_tags))
+            len(choice_tags) == len(choice_tag_features))
 
     reuse = False
     feature_to_predict_choices = []
     for i in range(NUM_CHOICES):
       caption = choice_captions[i]
       caption_len = choice_lengths[i]
+      caption_tag_features = choice_tag_features[i]
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
         feature_to_predict_choices.append(
-            self.image_text_matching(num_detections, detection_classes,
-                                     detection_features, caption, caption_len))
+            self.image_text_matching(
+                num_detections,
+                detection_classes,
+                detection_features,
+                caption,
+                caption_len,
+                caption_tag_features,
+                use_detection_class_labels=options.use_detection_class_labels))
       reuse = True
 
     with slim.arg_scope(self._slim_fc_scope):
@@ -284,7 +368,15 @@ class VBertFt(ModelBase):
       assignment_map.pop('global_step')
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
 
-    return {FIELD_ANSWER_PREDICTION: logits}
+    return {
+        FIELD_ANSWER_PREDICTION: logits,
+        'num_det': num_detections,
+        'det_classes': detection_classes,
+        'tags': choice_tags[0],
+        'caption': choice_captions[0],
+        'det_features': detection_features,
+        'tag_features': choice_tag_features[0]
+    }
 
   def build_losses(self, inputs, predictions, **kwargs):
     """Computes loss tensors.
@@ -332,10 +424,17 @@ class VBertFt(ModelBase):
       A list of trainable model variables.
     """
     options = self._model_proto
+    trainable_variables = tf.compat.v1.trainable_variables()
 
-    trainable_variables = tf.trainable_variables()
-    trainable_variables = [
-        x for x in trainable_variables
-        if 'FirstStageFeatureExtractor' not in x.op.name
-    ]
-    return trainable_variables
+    # Look for BERT frozen variables.
+    frozen_variables = []
+    for var in trainable_variables:
+      for name_pattern in options.frozen_variable_patterns:
+        if name_pattern in var.op.name:
+          frozen_variables.append(var)
+          break
+
+    # Get trainable variables.
+    var_list = list(set(trainable_variables) - set(frozen_variables))
+    return var_list
+

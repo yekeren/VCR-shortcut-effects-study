@@ -18,6 +18,7 @@ class TFExampleFields(object):
 
   detection_classes = "image/object/bbox/label"
   detection_scores = "image/object/bbox/score"
+  detection_features = 'image/object/bbox/feature'
   detection_boxes_scope = "image/object/bbox/"
   detection_boxes_keys = ['ymin', 'xmin', 'ymax', 'xmax']
 
@@ -46,6 +47,7 @@ class InputFields(object):
   detection_boxes = 'detection_boxes'
   detection_classes = 'detection_classes'
   detection_scores = 'detection_scores'
+  detection_features = 'detection_features'
 
   # Answer choices.
   answer_choices = 'answer_choices'

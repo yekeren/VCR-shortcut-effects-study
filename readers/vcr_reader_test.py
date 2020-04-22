@@ -25,6 +25,7 @@ class VCRReaderTest(tf.test.TestCase):
         interleave_cycle_length: 1
         batch_size: 8
         prefetch_buffer_size: 8000
+        desired_size: 600
       }
     """
     options = text_format.Merge(options_str, reader_pb2.Reader())
