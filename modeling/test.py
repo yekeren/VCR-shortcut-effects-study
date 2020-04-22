@@ -13,9 +13,9 @@ from google.protobuf import text_format
 from protos import pipeline_pb2
 from modeling import trainer
 from readers import reader
-from readers.vcr_text_only_reader import InputFields
-from readers.vcr_text_only_reader import NUM_CHOICES
-from vcr import builder
+from readers.vcr_reader import InputFields
+from readers.vcr_reader import NUM_CHOICES
+from models import builder
 from protos import pipeline_pb2
 import json
 
@@ -50,13 +50,13 @@ def main(_):
   pipeline_proto = _load_pipeline_proto(FLAGS.pipeline_proto)
 
   for example in trainer.predict(pipeline_proto, FLAGS.model_dir):
+    import pdb
+    pdb.set_trace()
     batch_size = len(example['question'])
     for i in range(batch_size):
       print('#' * 128)
       print(example['question'][i])
       print(example['answer_label'][i])
-      import pdb
-      pdb.set_trace()
       for j in range(4):
         sentence = []
         for token, indicator in zip(example['answer_choices'][i, j],

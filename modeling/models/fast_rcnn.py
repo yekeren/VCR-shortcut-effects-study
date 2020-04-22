@@ -118,22 +118,10 @@ def FastRCNN(inputs, proposals, options, is_training=True):
 
   # Initialize from a detection model.
   else:
-    # var_list = [
-    #     x for x in tf.compat.v1.global_variables()
-    #     if ('FirstStageFeatureExtractor' in x.op.name or
-    #         'SecondStageFeatureExtractor' in x.op.name)
-    # ]
-    var_list = {}
-    for var in tf.compat.v1.global_variables():
-      var_name = var.op.name
-      if (var_name.startswith('FirstStageFeatureExtractor') or
-          var_name.startswith('SecondStageFeatureExtractor')):
-        if var_name.startswith(
-            'SecondStageFeatureExtractor/InceptionResnetV2/Repeat'):
-          var_name = var_name.replace(
-              'SecondStageFeatureExtractor/InceptionResnetV2/Repeat',
-              'SecondStageFeatureExtractor/InceptionResnetV2/Repeat_2')
-        var_list[var_name] = var
+    var_list = dict([(x.op.name, x)
+                     for x in tf.compat.v1.global_variables()
+                     if ('FirstStageFeatureExtractor' in x.op.name or
+                         'SecondStageFeatureExtractor' in x.op.name)])
     saver = tf.compat.v1.train.Saver(var_list)
 
     def _init_from_detection_ckpt_fn(_, sess):
