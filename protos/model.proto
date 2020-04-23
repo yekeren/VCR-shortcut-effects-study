@@ -3,6 +3,12 @@ syntax = "proto2";
 import "protos/fast_rcnn.proto";
 import "protos/hyperparams.proto";
 
+enum DetectionAdaptation {
+  LINEAR = 1;
+  MLP = 2;
+  MLP_RES = 3;
+}
+
 message Model {
   extensions 1000 to max;
 }
@@ -126,6 +132,9 @@ message VBertOffline{
 
   // Maximum caption length.
   optional uint32 max_caption_len = 24 [default = 999];
+
+  // Method to adapt detection feature.
+  optional DetectionAdaptation detection_adaptation = 25 [default = LINEAR];
 }
 
 
@@ -166,4 +175,7 @@ message VBertFtOffline {
 
   // If true, use FRCNN features as well as detection labels.
   optional bool use_detection_class_labels = 21 [default = true];
+
+  // Method to adapt detection feature.
+  optional DetectionAdaptation detection_adaptation = 22 [default = LINEAR];
 }
