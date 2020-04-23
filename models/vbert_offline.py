@@ -135,6 +135,56 @@ class VBertOffline(ModelBase):
     self._slim_fc_scope = hyperparams.build_hyperparams(options.fc_hyperparams,
                                                         is_training)()
 
+  def project_detection_features(self, detection_features):
+    """Projects detection features to embedding space.
+
+    Args:
+      detection_features: Detection features.
+
+    Returns:
+      embeddings: Projected detection features.
+    """
+    is_training = self._is_training
+    options = self._model_proto
+
+    if options.detection_adaptation == model_pb2.LINEAR:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/project')
+      return detection_features
+
+    elif options.detection_adaptation == model_pb2.MLP:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=tf.nn.relu,
+                                                scope='detection/project')
+      detection_features = slim.dropout(detection_features,
+                                        keep_prob=options.dropout_keep_prob,
+                                        is_training=is_training)
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/adaptation')
+      return detection_features
+
+    elif options.detection_adaptation == model_pb2.MLP_RES:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/project')
+      detection_features_res = slim.dropout(tf.nn.relu(detection_features),
+                                            keep_prob=options.dropout_keep_prob,
+                                            is_training=is_training)
+      detection_features_res = slim.fully_connected(
+          detection_features_res,
+          self._bert_config.hidden_size,
+          activation_fn=None,
+          scope='detection/adaptation')
+      return detection_features + detection_features_res
+
+    raise ValueError('Invalid `detection_adaptation`.')
+
   def create_bert_input_tensors(self, num_detections, detection_classes,
                                 detection_features, caption, caption_len):
     """Predicts the matching score of the given image-text pair.
@@ -349,18 +399,9 @@ class VBertOffline(ModelBase):
     caption, caption_len = trim_captions(
         caption, caption_len, max_caption_len=options.max_caption_len)
 
+    # Project Fast-RCNN features.
     with slim.arg_scope(self._slim_fc_scope):
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=tf.nn.relu,
-                                                scope='detection/hidden')
-      detection_features = slim.dropout(detection_features,
-                                        keep_prob=options.dropout_keep_prob,
-                                        is_training=is_training)
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
+      detection_features = self.project_detection_features(detection_features)
 
     # Pre-training task 2: Masked Language Modeling (MLM).
     with tf.variable_scope(tf.get_variable_scope(), reuse=False):

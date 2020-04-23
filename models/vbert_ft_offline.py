@@ -152,6 +152,56 @@ class VBertFtOffline(ModelBase):
       self._field_choices_tag = InputFields.answer_choices_tag
       self._field_choices_len = InputFields.answer_choices_len
 
+  def project_detection_features(self, detection_features):
+    """Projects detection features to embedding space.
+
+    Args:
+      detection_features: Detection features.
+
+    Returns:
+      embeddings: Projected detection features.
+    """
+    is_training = self._is_training
+    options = self._model_proto
+
+    if options.detection_adaptation == model_pb2.LINEAR:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/project')
+      return detection_features
+
+    elif options.detection_adaptation == model_pb2.MLP:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=tf.nn.relu,
+                                                scope='detection/project')
+      detection_features = slim.dropout(detection_features,
+                                        keep_prob=options.dropout_keep_prob,
+                                        is_training=is_training)
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/adaptation')
+      return detection_features
+
+    elif options.detection_adaptation == model_pb2.MLP_RES:
+      detection_features = slim.fully_connected(detection_features,
+                                                self._bert_config.hidden_size,
+                                                activation_fn=None,
+                                                scope='detection/project')
+      detection_features_res = slim.dropout(tf.nn.relu(detection_features),
+                                            keep_prob=options.dropout_keep_prob,
+                                            is_training=is_training)
+      detection_features_res = slim.fully_connected(
+          detection_features_res,
+          self._bert_config.hidden_size,
+          activation_fn=None,
+          scope='detection/adaptation')
+      return detection_features + detection_features_res
+
+    raise ValueError('Invalid `detection_adaptation`.')
+
   def create_bert_input_tensors(self,
                                 num_detections,
                                 detection_classes,
@@ -193,8 +243,8 @@ class VBertFtOffline(ModelBase):
     if not use_detection_class_labels:
       detection_classes = tf.fill([batch_size, max_detections], MASK)
 
-    input_tokens = tf.concat(
-        [token_cls, detection_classes, caption, token_sep], axis=-1)
+    input_tokens = tf.concat([token_cls, detection_classes, caption, token_sep],
+                             axis=-1)
     input_ids = token_to_id_func(input_tokens)
 
     # Create input features.
@@ -273,21 +323,7 @@ class VBertFtOffline(ModelBase):
 
     # Project Fast-RCNN features.
     with slim.arg_scope(self._slim_fc_scope):
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
-      # detection_features = slim.fully_connected(detection_features,
-      #                                           self._bert_config.hidden_size,
-      #                                           activation_fn=tf.nn.relu,
-      #                                           scope='detection/project')
-      # detection_features = slim.dropout(detection_features,
-      #                                   keep_prob=options.dropout_keep_prob,
-      #                                   is_training=is_training)
-      # detection_features = slim.fully_connected(detection_features,
-      #                                           self._bert_config.hidden_size,
-      #                                           activation_fn=None,
-      #                                           scope='detection/adaptation')
+      detection_features = self.project_detection_features(detection_features)
 
     # Ground objects.
     choice_lengths = inputs[self._field_choices_len]
@@ -407,4 +443,3 @@ class VBertFtOffline(ModelBase):
     # Get trainable variables.
     var_list = list(set(trainable_variables) - set(frozen_variables))
     return var_list
-
