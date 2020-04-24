@@ -49,6 +49,11 @@ class InputFields(object):
   detection_scores = 'detection_scores'
   detection_features = 'detection_features'
 
+  # Question.
+  question = 'question'
+  question_tag = 'question_tag'
+  question_len = 'question_len'
+
   # Answer choices.
   answer_choices = 'answer_choices'
   answer_choices_tag = 'answer_choices_tag'

@@ -53,8 +53,8 @@ def _update_decoded_example(decoded_example, options):
                                   [-1, options.frcnn_feature_dims])
 
   # Question length.
-  question = decoded_example.pop(TFExampleFields.question)
-  question_tag = decoded_example.pop(TFExampleFields.question_tag)
+  question = decoded_example[InputFields.question]
+  question_tag = decoded_example[InputFields.question_tag]
   question_len = tf.shape(question)[0]
 
   # Answer choices and lengths.
@@ -62,25 +62,14 @@ def _update_decoded_example(decoded_example, options):
       decoded_example.pop(TFExampleFields.answer_choice + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
   ]
-  answer_choices_with_question_list = [
-      tf.concat([question, ['[SEP]'], x], 0) for x in answer_choices_list
-  ]
-  (answer_choices, answer_choices_len) = _pad_sequences(answer_choices_list)
-  (answer_choices_with_question, answer_choices_with_question_len
-  ) = _pad_sequences(answer_choices_with_question_list)
-
-  # Answer tags.
   answer_choices_tag_list = [
       decoded_example.pop(TFExampleFields.answer_choice_tag + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
   ]
-  answer_choices_with_question_tag_list = [
-      tf.concat([question_tag, [-1], x], 0) for x in answer_choices_tag_list
-  ]
-  answer_choices_tag, _ = _pad_sequences(answer_choices_tag_list, -1)
-  answer_choices_with_question_tag, _ = _pad_sequences(
-      answer_choices_with_question_tag_list, -1)
+  (answer_choices, answer_choices_len) = _pad_sequences(answer_choices_list)
+  (answer_choices_tag, _) = _pad_sequences(answer_choices_tag_list, -1)
 
+  # Ground-truth answer.
   answer_len = answer_choices_len[decoded_example[InputFields.answer_label]]
   answer = answer_choices[decoded_example[
       InputFields.answer_label]][:answer_len]
@@ -92,37 +81,26 @@ def _update_decoded_example(decoded_example, options):
       decoded_example.pop(TFExampleFields.rationale_choice + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
   ]
-  rationale_choices_with_question_list = [
-      tf.concat([question, answer, ['[SEP]'], x], 0)
-      for x in rationale_choices_list
-  ]
-  (rationale_choices,
-   rationale_choices_len) = _pad_sequences(rationale_choices_list)
-  (rationale_choices_with_question, rationale_choices_with_question_len
-  ) = _pad_sequences(rationale_choices_with_question_list)
-
-  # Rationale tags.
   rationale_choices_tag_list = [
       decoded_example.pop(TFExampleFields.rationale_choice_tag + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
   ]
-  rationale_choices_with_question_tag_list = [
-      tf.concat([question_tag, answer_tag, [-1], x], 0)
-      for x in rationale_choices_tag_list
-  ]
-  rationale_choices_tag, _ = _pad_sequences(rationale_choices_tag_list, -1)
-  rationale_choices_with_question_tag, _ = _pad_sequences(
-      rationale_choices_with_question_tag_list, -1)
+  (rationale_choices,
+   rationale_choices_len) = _pad_sequences(rationale_choices_list)
+  (rationale_choices_tag, _) = _pad_sequences(rationale_choices_tag_list, -1)
 
   decoded_example.update({
       InputFields.num_detections: num_detections,
       InputFields.detection_features: detection_features,
-      InputFields.answer_choices: answer_choices_with_question,
-      InputFields.answer_choices_tag: answer_choices_with_question_tag,
-      InputFields.answer_choices_len: answer_choices_with_question_len,
-      InputFields.rationale_choices: rationale_choices_with_question,
-      InputFields.rationale_choices_tag: rationale_choices_with_question_tag,
-      InputFields.rationale_choices_len: rationale_choices_with_question_len,
+      InputFields.question: tf.tile(tf.expand_dims(question, 0), [NUM_CHOICES, 1]),
+      InputFields.question_tag: tf.tile(tf.expand_dims(question_tag, 0), [NUM_CHOICES, 1]),
+      InputFields.question_len: tf.tile(tf.expand_dims(question_len, 0), [NUM_CHOICES]),
+      InputFields.answer_choices: answer_choices,
+      InputFields.answer_choices_tag: answer_choices_tag,
+      InputFields.answer_choices_len: answer_choices_len,
+      InputFields.rationale_choices: rationale_choices,
+      InputFields.rationale_choices_tag: rationale_choices_tag,
+      InputFields.rationale_choices_len: rationale_choices_len,
   })
 
   return decoded_example
@@ -189,10 +167,10 @@ def _parse_single_example(example, options):
       InputFields.detection_scores:
           tfexample_decoder.Tensor(tensor_key=TFExampleFields.detection_scores,
                                    default_value=0),
-      TFExampleFields.question:
+      InputFields.question:
           tfexample_decoder.Tensor(tensor_key=TFExampleFields.question,
                                    default_value=PAD),
-      TFExampleFields.question_tag:
+      InputFields.question_tag:
           tfexample_decoder.Tensor(tensor_key=TFExampleFields.question_tag,
                                    default_value=-1),
       TFExampleFields.detection_features:
@@ -274,6 +252,9 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.detection_classes: [None],
       InputFields.detection_scores: [None],
       InputFields.detection_features: [None, options.frcnn_feature_dims],
+      InputFields.question: [NUM_CHOICES, None],
+      InputFields.question_tag: [NUM_CHOICES, None],
+      InputFields.question_len: [NUM_CHOICES],
       InputFields.answer_choices: [NUM_CHOICES, None],
       InputFields.answer_choices_tag: [NUM_CHOICES, None],
       InputFields.answer_choices_len: [NUM_CHOICES],
@@ -291,6 +272,9 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.detection_classes: '',
       InputFields.detection_scores: 0.0,
       InputFields.detection_features: 0.0,
+      InputFields.question: PAD,
+      InputFields.question_tag: -1,
+      InputFields.question_len: 0,
       InputFields.answer_choices: PAD,
       InputFields.answer_choices_tag: -1,
       InputFields.answer_choices_len: 0,
