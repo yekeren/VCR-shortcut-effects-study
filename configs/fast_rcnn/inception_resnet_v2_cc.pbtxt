@@ -1,0 +1,12 @@
+feature_extractor {
+  type: 'faster_rcnn_inception_resnet_v2'
+  first_stage_features_stride: 8
+}
+initial_crop_size: 17
+maxpool_kernel_size: 1
+maxpool_stride: 1
+dropout_keep_prob: 1.0
+dropout_on_feature_map: false
+checkpoint_path: 'data/classification/inception_resnet_v2_2016_08_30/inception_resnet_v2_2016_08_30.ckpt'
+checkpoint_path: 'zoo/cc_pretrain/incres00001/model.ckpt-122102'
+from_classification_checkpoint: false
