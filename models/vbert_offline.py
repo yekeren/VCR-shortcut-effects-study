@@ -83,40 +83,6 @@ def trim_captions(caption, caption_len, max_caption_len):
   return caption, caption_len
 
 
-def convert_to_batch_coordinates(detection_boxes, height, width, batch_height,
-                                 batch_width):
-  """Converts the coordinates to be relative to the batch images. """
-  height = tf.expand_dims(tf.cast(height, tf.float32), -1)
-  width = tf.expand_dims(tf.cast(width, tf.float32), -1)
-  batch_height = tf.cast(batch_height, tf.float32)
-  batch_width = tf.cast(batch_width, tf.float32)
-
-  ymin, xmin, ymax, xmax = tf.unstack(detection_boxes, axis=-1)
-  detection_boxes_converted = tf.stack([
-      ymin * height / batch_height, xmin * width / batch_width,
-      ymax * height / batch_height, xmax * width / batch_width
-  ], -1)
-  return detection_boxes_converted
-
-
-def insert_image_box(num_detections, detection_scores, detection_classes,
-                     detection_boxes):
-  """Insert image-box to the 0-th position. """
-  batch_size = num_detections.shape[0]
-
-  num_detections += 1
-  detection_scores = tf.concat(
-      [tf.fill([batch_size, 1], 1.0), detection_scores], axis=-1)
-  detection_classes = tf.concat(
-      [tf.fill([batch_size, 1], IMG), detection_classes], axis=-1)
-  detection_boxes = tf.concat([
-      tf.gather(tf.constant([[[0, 0, 1, 1]]], dtype=tf.float32),
-                [0] * batch_size,
-                axis=0), detection_boxes
-  ], 1)
-  return num_detections, detection_scores, detection_classes, detection_boxes
-
-
 class VBertOffline(ModelBase):
   """Wraps the BiLSTM layer to solve the VCR task."""
 
@@ -371,16 +337,6 @@ class VBertOffline(ModelBase):
         inputs[InputFields.answer_label],
     )
     batch_size = num_detections.shape[0]
-
-    # Remove boxes if there are too many.
-    (max_num_detections, num_detections, detection_scores, detection_classes,
-     detection_boxes,
-     detection_features) = remove_detections(num_detections,
-                                             detection_scores,
-                                             detection_classes,
-                                             detection_boxes,
-                                             detection_features,
-                                             max_num_detections=10)
 
     # Extract groundtruth answer.
     answer_indices = tf.stack([tf.range(batch_size), answer_label], -1)
