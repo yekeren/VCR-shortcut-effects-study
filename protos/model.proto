@@ -13,88 +13,6 @@ message Model {
   extensions 1000 to max;
 }
 
-message VBERT {
-  extend Model {
-    optional VBERT ext = 1001;
-  }
-
-  // Path to the bert config file.
-  optional string bert_config_file = 1;
-
-  // Path to the bert vocabulary file.
-  optional string bert_vocab_file = 2;
-
-  // Path to the pre-trained bert checkpoint.
-  optional string bert_checkpoint_file = 3;
-
-  // Out-of-Vocabulary token id.
-  optional uint32 bert_unk_token_id = 4 [default = 100];
-
-  // Configs of the Fast-RCNN model.
-  optional FastRCNN fast_rcnn_config = 11;
-
-  // Hyperparameters of the fully-connected layers.
-  optional Hyperparams fc_hyperparams = 16;
-
-  // If true, sample one instead of all negatives.
-  optional bool sample_one = 20 [default = false];
-
-  // Mask probability of the Masked Language Modeling.
-  optional float mask_probability = 21 [default = 0.15];
-
-  // If true, freeze the FirstStageFeatureExtractor in the detection model.
-  optional bool freeze_first_stage_feature_extractor = 22 [default = true];
-
-  // Maximum number of detections.
-  optional uint32 max_num_detections = 23 [default = 999];
-
-  // Maximum caption length.
-  optional uint32 max_caption_len = 24 [default = 999];
-}
-
-
-message VBertFt {
-  extend Model {
-    optional VBertFt ext = 1002;
-  }
-
-  // If true, train rationale prediction model.
-  optional bool rationale_model = 1 [default = false];
-
-  // Path to the bert config file.
-  optional string bert_config_file = 2;
-
-  // Path to the bert vocabulary file.
-  optional string bert_vocab_file = 3;
-
-  // Path to the pre-trained bert checkpoint.
-  optional string bert_checkpoint_file = 4;
-
-  // Out-of-Vocabulary token id.
-  optional uint32 bert_unk_token_id = 5 [default = 100];
-
-  // Fast-RCNN config.
-  optional FastRCNN fast_rcnn_config = 6;
-
-  // Maximum number of objects to be used in the model.
-  optional int32 max_num_detections = 7 [default = 10];
-
-  // Hyperparameters of the fully-connected layers.
-  optional Hyperparams fc_hyperparams = 11;
-
-  // Keep probability of all dropout layers.
-  optional float dropout_keep_prob = 12 [default = 1.0];
-
-  // If true, use sigmoid crossentropy loss.
-  optional bool use_sigmoid_loss = 13 [default = false];
-
-  // Frozen variable patterns.
-  repeated string frozen_variable_patterns = 14;
-
-  // If true, use FRCNN features as well as detection labels.
-  optional bool use_detection_class_labels = 21 [default = true];
-}
-
 message VBertOffline{
   extend Model {
     optional VBertOffline ext = 1003;
@@ -118,9 +36,6 @@ message VBertOffline{
   // Hyperparameters of the fully-connected layers.
   optional Hyperparams fc_hyperparams = 16;
 
-  // If true, sample one instead of all negatives.
-  optional bool sample_one = 20 [default = false];
-
   // Mask probability of the Masked Language Modeling.
   optional float mask_probability = 21 [default = 0.15];
 
@@ -135,6 +50,8 @@ message VBertOffline{
 
   // Method to adapt detection feature.
   optional DetectionAdaptation detection_adaptation = 25 [default = LINEAR];
+
+  optional bool use_image_text_matching_task = 26 [default = false];
 }
 
 

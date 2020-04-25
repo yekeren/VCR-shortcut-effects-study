@@ -237,7 +237,8 @@ class VBertOffline(ModelBase):
       detection_classes: A [batch, max_detections] string tensor.
       detection_features: A [batch, max_detections, dims] float tensor.
       caption: A [batch, max_caption_len] string tensor.
-      caption_tag: A [batch, max_caption_len, dims] float tensor.
+      caption_tag: A [batch, max_caption_len] int tensor.
+      caption_tag_feature: A [batch, max_caption_len, dims] float tensor.
       caption_len: A [batch] int tensor.
 
     Returns:
@@ -282,7 +283,8 @@ class VBertOffline(ModelBase):
     return self._token_to_id_func(masked_tokens), predicted_logits
 
   def image_text_matching(self, num_detections, detection_classes,
-                          detection_features, caption, caption_len):
+                          detection_features, caption, caption_tag,
+                          caption_tag_feature, caption_len):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -290,6 +292,8 @@ class VBertOffline(ModelBase):
       detection_classes: A [batch, max_detections] string tensor.
       detection_features: A [batch, max_detections, dims] float tensor.
       caption: A [batch, max_caption_len] string tensor.
+      caption_tag: A [batch, max_caption_len] int tensor.
+      caption_tag_feature: A [batch, max_caption_len, dims] float tensor.
       caption_len: A [batch] int tensor.
 
     Returns:
@@ -297,7 +301,7 @@ class VBertOffline(ModelBase):
     """
     (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
         num_detections, detection_classes, detection_features, caption,
-        caption_len)
+        caption_tag_feature, caption_len)
     bert_model = BertModel(self._bert_config,
                            self._is_training,
                            input_ids=input_ids,
@@ -373,39 +377,51 @@ class VBertOffline(ModelBase):
             'mlm/{}/labels'.format(choice_type): mlm_labels,
         })
         reuse = True
-    predictions.update(inputs)
 
-    # # Pre-training task 1: Image-Text Matching (ITM).
-    # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-    #   feature_to_predict_1 = self.image_text_matching(num_detections,
-    #                                                   detection_classes,
-    #                                                   detection_features,
-    #                                                   caption, caption_len)
-    # with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-    #   feature_to_predict_0 = []
-    #   base_indices = tf.range(batch_size, dtype=tf.int32)
-    #   for index_offset in range(1, batch_size):
-    #     negative_indices = (base_indices + index_offset) % batch_size
-    #     feature_to_predict_0.append(
-    #         self.image_text_matching(
-    #             num_detections, detection_classes, detection_features,
-    #             tf.gather(caption, negative_indices, axis=0),
-    #             tf.gather(caption_len, negative_indices, axis=0)))
-    #     if options.sample_one:
-    #       break
+    # Pre-training task 2: Image-Text Matching (ITM).
+    if options.use_image_text_matching_task:
+      for choice, choice_tag, choice_tag_f, choice_len, choice_type in [
+          (answer, answer_tag, answer_tag_f, answer_len, 'answer'),
+          (rationale, rationale_tag, rationale_tag_f, rationale_len,
+           'rationale')
+      ]:
+        # Generate prediction for either answer or rationale.
+        with tf.variable_scope(tf.get_variable_scope(), reuse=True):
+          feature_to_predict_1 = self.image_text_matching(
+              num_detections, detection_classes, detection_features, choice,
+              choice_tag, choice_tag_f, choice_len)
 
-    # with slim.arg_scope(self._slim_fc_scope):
-    #   itm_feature = tf.stack([feature_to_predict_1] + feature_to_predict_0, 1)
-    #   itm_logits = slim.fully_connected(itm_feature,
-    #                                     num_outputs=1,
-    #                                     activation_fn=None,
-    #                                     scope='itm/logits')
-    #   itm_logits = tf.squeeze(itm_logits, -1)
+          feature_to_predict_0 = []
+          base_indices = tf.range(batch_size, dtype=tf.int32)
+          for index_offset in range(1, batch_size):
+            negative_indices = (base_indices + index_offset) % batch_size
+            feature_to_predict_0.append(
+                self.image_text_matching(
+                    num_detections, detection_classes, detection_features,
+                    tf.gather(choice, negative_indices, axis=0),
+                    tf.gather(choice_tag, negative_indices, axis=0),
+                    tf.gather(choice_tag_f, negative_indices, axis=0),
+                    tf.gather(choice_len, negative_indices, axis=0)))
 
-    # itm_labels = tf.concat([
-    #     tf.fill([batch_size, 1], 1.0),
-    #     tf.fill([batch_size, itm_logits.shape[-1] - 1], 0.0)
-    # ], -1)
+        # Generate logits.
+        with slim.arg_scope(self._slim_fc_scope):
+          itm_feature = tf.stack([feature_to_predict_1] + feature_to_predict_0,
+                                 1)
+          itm_logits = slim.fully_connected(
+              itm_feature,
+              num_outputs=1,
+              activation_fn=None,
+              scope='itm/{}/logits'.format(choice_type))
+          itm_logits = tf.squeeze(itm_logits, -1)
+        itm_labels = tf.concat([
+            tf.fill([batch_size, 1], 1.0),
+            tf.fill([batch_size, itm_logits.shape[-1] - 1], 0.0)
+        ], -1)
+        predictions.update({
+            'itm/{}/logits'.format(choice_type): itm_logits,
+            'itm/{}/labels'.format(choice_type): itm_labels,
+        })
+      # END for answer, rationale
 
     # Restore from BERT checkpoint.
     assignment_map, _ = get_assignment_map_from_checkpoint(
@@ -437,6 +453,12 @@ class VBertOffline(ModelBase):
       loss_dict['mlm_{}_sparse_softmax_cross_entropy'.format(
           choice_type)] = tf.reduce_mean(losses)
 
+      if options.use_image_text_matching_task:
+        losses = tf.nn.sigmoid_cross_entropy_with_logits(
+            labels=predictions['itm/{}/labels'.format(choice_type)],
+            logits=predictions['itm/{}/logits'.format(choice_type)])
+        loss_dict['itm_{}_sigmoid_cross_entropy'.format(
+            choice_type)] = tf.reduce_mean(losses)
     return loss_dict
 
   def build_metrics(self, inputs, predictions, **kwargs):
@@ -463,6 +485,22 @@ class VBertOffline(ModelBase):
       accuracy.update_state(true, pred)
       metric_dict['metrics/mlm_{}_accuracy'.format(choice_type)] = accuracy
 
+      # ITM metrics.
+      if options.use_image_text_matching_task:
+        true = tf.argmax(predictions['itm/{}/labels'.format(choice_type)], -1)
+
+        accuracy = tf.keras.metrics.Accuracy()
+        pred = tf.argmax(
+            predictions['itm/{}/logits'.format(choice_type)][:, :2], -1)
+        accuracy.update_state(true, pred)
+        metric_dict['metrics/itm_{}_accuracy_neg@1'.format(
+            choice_type)] = accuracy
+
+        accuracy = tf.keras.metrics.Accuracy()
+        pred = tf.argmax(predictions['itm/{}/logits'.format(choice_type)], -1)
+        accuracy.update_state(true, pred)
+        metric_dict['metrics/itm_{}_accuracy_neg@all'.format(
+            choice_type)] = accuracy
     return metric_dict
 
   def get_variables_to_train(self):
