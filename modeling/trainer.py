@@ -123,7 +123,7 @@ def _create_model_fn(pipeline_proto, is_chief=True):
   return _model_fn
 
 
-def train_and_evaluate(pipeline_proto, model_dir):
+def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
   """Starts the estimator trainval loop.
 
   Args:
@@ -151,7 +151,11 @@ def train_and_evaluate(pipeline_proto, model_dir):
       throttle_secs=eval_config.throttle_secs)
 
   # Create run_config.
+  strategy = None
+  if use_mirrored_strategy:
+    strategy = tf.contrib.distribute.MirroredStrategy()
   run_config = tf.estimator.RunConfig(
+      train_distribute=strategy,
       save_summary_steps=train_config.save_summary_steps,
       save_checkpoints_steps=train_config.save_checkpoints_steps,
       keep_checkpoint_max=train_config.keep_checkpoint_max,

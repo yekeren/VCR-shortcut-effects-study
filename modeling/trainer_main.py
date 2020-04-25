@@ -19,6 +19,9 @@ flags.DEFINE_string('model_dir', None,
 
 flags.DEFINE_string('pipeline_proto', None, 'Path to the pipeline proto file.')
 
+flags.DEFINE_boolean('use_mirrored_strategy', False,
+                     'If true, use mirrored strategy for training.')
+
 FLAGS = flags.FLAGS
 
 
@@ -48,7 +51,8 @@ def main(_):
 
   pipeline_proto = _load_pipeline_proto(FLAGS.pipeline_proto)
   trainer.train_and_evaluate(pipeline_proto=pipeline_proto,
-                             model_dir=FLAGS.model_dir)
+                             model_dir=FLAGS.model_dir,
+                             use_mirrored_strategy=FLAGS.use_mirrored_strategy)
 
 
 if __name__ == '__main__':

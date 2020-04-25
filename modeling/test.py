@@ -49,9 +49,14 @@ def main(_):
     tf.config.experimental.set_memory_growth(gpu, True)
   pipeline_proto = _load_pipeline_proto(FLAGS.pipeline_proto)
 
+  with open('data/bert/tf1.x/BERT-Base/vocab.txt', 'r', encoding='utf8') as f:
+    vocab = [x.strip('\n') for x in f]
+
   for example in trainer.predict(pipeline_proto, FLAGS.model_dir):
+    labels = [vocab[x].encode('utf8') for x in example['mlm/answer/labels']]
     import pdb
     pdb.set_trace()
+    j = 1
     batch_size = len(example['question'])
     for i in range(batch_size):
       print('#' * 128)
