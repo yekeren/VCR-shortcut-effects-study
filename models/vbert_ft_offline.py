@@ -143,14 +143,14 @@ class VBertFtOffline(ModelBase):
 
     if options.rationale_model:
       self._field_label = InputFields.rationale_label
-      self._field_choices = InputFields.rationale_choices
-      self._field_choices_tag = InputFields.rationale_choices_tag
-      self._field_choices_len = InputFields.rationale_choices_len
+      self._field_choices = InputFields.mixed_rationale_choices
+      self._field_choices_tag = InputFields.mixed_rationale_choices_tag
+      self._field_choices_len = InputFields.mixed_rationale_choices_len
     else:
       self._field_label = InputFields.answer_label
-      self._field_choices = InputFields.answer_choices
-      self._field_choices_tag = InputFields.answer_choices_tag
-      self._field_choices_len = InputFields.answer_choices_len
+      self._field_choices = InputFields.mixed_answer_choices
+      self._field_choices_tag = InputFields.mixed_answer_choices_tag
+      self._field_choices_len = InputFields.mixed_answer_choices_len
 
   def project_detection_features(self, detection_features):
     """Projects detection features to embedding space.
@@ -313,13 +313,13 @@ class VBertFtOffline(ModelBase):
 
     # Remove boxes if there are too many.
     (max_num_detections, num_detections, detection_scores, detection_classes,
-     detection_boxes,
-     detection_features) = remove_detections(num_detections,
-                                             detection_scores,
-                                             detection_classes,
-                                             detection_boxes,
-                                             detection_features,
-                                             max_num_detections=10)
+     detection_boxes, detection_features) = remove_detections(
+         num_detections,
+         detection_scores,
+         detection_classes,
+         detection_boxes,
+         detection_features,
+         max_num_detections=options.max_num_detections)
 
     # Project Fast-RCNN features.
     with slim.arg_scope(self._slim_fc_scope):

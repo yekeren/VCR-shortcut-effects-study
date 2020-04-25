@@ -57,7 +57,7 @@ def _update_decoded_example(decoded_example, options):
   question_tag = decoded_example[InputFields.question_tag]
   question_len = tf.shape(question)[0]
 
-  # Answer choices and lengths.
+  # Answer and rationale choices.
   answer_choices_list = [
       decoded_example.pop(TFExampleFields.answer_choice + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
@@ -69,14 +69,6 @@ def _update_decoded_example(decoded_example, options):
   (answer_choices, answer_choices_len) = _pad_sequences(answer_choices_list)
   (answer_choices_tag, _) = _pad_sequences(answer_choices_tag_list, -1)
 
-  # Ground-truth answer.
-  answer_len = answer_choices_len[decoded_example[InputFields.answer_label]]
-  answer = answer_choices[decoded_example[
-      InputFields.answer_label]][:answer_len]
-  answer_tag = answer_choices_tag[decoded_example[
-      InputFields.answer_label]][:answer_len]
-
-  # Rationale choices and lengths.
   rationale_choices_list = [
       decoded_example.pop(TFExampleFields.rationale_choice + '_%i' % i)
       for i in range(1, 1 + NUM_CHOICES)
@@ -89,18 +81,72 @@ def _update_decoded_example(decoded_example, options):
    rationale_choices_len) = _pad_sequences(rationale_choices_list)
   (rationale_choices_tag, _) = _pad_sequences(rationale_choices_tag_list, -1)
 
+  # Mixed question -> answer, question-answer -> rationale.
+  answer_len = answer_choices_len[decoded_example[InputFields.answer_label]]
+  answer = answer_choices[decoded_example[
+      InputFields.answer_label]][:answer_len]
+  answer_tag = answer_choices_tag[decoded_example[
+      InputFields.answer_label]][:answer_len]
+
+  mixed_answer_choices_list = [
+      tf.concat([question, ['[SEP]'], x], 0) for x in answer_choices_list
+  ]
+  mixed_answer_choices_tag_list = [
+      tf.concat([question_tag, [-1], x], 0) for x in answer_choices_tag_list
+  ]
+  (mixed_answer_choices,
+   mixed_answer_choices_len) = _pad_sequences(mixed_answer_choices_list)
+  (mixed_answer_choices_tag, _) = _pad_sequences(mixed_answer_choices_tag_list,
+                                                 pad=-1)
+
+  mixed_rationale_choices_list = [
+      tf.concat([question, answer, ['[SEP]'], x], 0)
+      for x in rationale_choices_list
+  ]
+  mixed_rationale_choices_tag_list = [
+      tf.concat([question_tag, answer_tag, [-1], x], 0)
+      for x in rationale_choices_tag_list
+  ]
+  (mixed_rationale_choices,
+   mixed_rationale_choices_len) = _pad_sequences(mixed_rationale_choices_list)
+  (mixed_rationale_choices_tag,
+   _) = _pad_sequences(mixed_rationale_choices_tag_list, pad=-1)
+
   decoded_example.update({
-      InputFields.num_detections: num_detections,
-      InputFields.detection_features: detection_features,
-      InputFields.question: tf.tile(tf.expand_dims(question, 0), [NUM_CHOICES, 1]),
-      InputFields.question_tag: tf.tile(tf.expand_dims(question_tag, 0), [NUM_CHOICES, 1]),
-      InputFields.question_len: tf.tile(tf.expand_dims(question_len, 0), [NUM_CHOICES]),
-      InputFields.answer_choices: answer_choices,
-      InputFields.answer_choices_tag: answer_choices_tag,
-      InputFields.answer_choices_len: answer_choices_len,
-      InputFields.rationale_choices: rationale_choices,
-      InputFields.rationale_choices_tag: rationale_choices_tag,
-      InputFields.rationale_choices_len: rationale_choices_len,
+      InputFields.num_detections:
+          num_detections,
+      InputFields.detection_features:
+          detection_features,
+      InputFields.question:
+          tf.tile(tf.expand_dims(question, 0), [NUM_CHOICES, 1]),
+      InputFields.question_tag:
+          tf.tile(tf.expand_dims(question_tag, 0), [NUM_CHOICES, 1]),
+      InputFields.question_len:
+          tf.tile(tf.expand_dims(question_len, 0), [NUM_CHOICES]),
+      InputFields.answer_choices:
+          answer_choices,
+      InputFields.answer_choices_tag:
+          answer_choices_tag,
+      InputFields.answer_choices_len:
+          answer_choices_len,
+      InputFields.rationale_choices:
+          rationale_choices,
+      InputFields.rationale_choices_tag:
+          rationale_choices_tag,
+      InputFields.rationale_choices_len:
+          rationale_choices_len,
+      InputFields.mixed_answer_choices:
+          mixed_answer_choices,
+      InputFields.mixed_answer_choices_tag:
+          mixed_answer_choices_tag,
+      InputFields.mixed_answer_choices_len:
+          mixed_answer_choices_len,
+      InputFields.mixed_rationale_choices:
+          mixed_rationale_choices,
+      InputFields.mixed_rationale_choices_tag:
+          mixed_rationale_choices_tag,
+      InputFields.mixed_rationale_choices_len:
+          mixed_rationale_choices_len,
   })
 
   return decoded_example
@@ -261,6 +307,12 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.rationale_choices: [NUM_CHOICES, None],
       InputFields.rationale_choices_tag: [NUM_CHOICES, None],
       InputFields.rationale_choices_len: [NUM_CHOICES],
+      InputFields.mixed_answer_choices: [NUM_CHOICES, None],
+      InputFields.mixed_answer_choices_tag: [NUM_CHOICES, None],
+      InputFields.mixed_answer_choices_len: [NUM_CHOICES],
+      InputFields.mixed_rationale_choices: [NUM_CHOICES, None],
+      InputFields.mixed_rationale_choices_tag: [NUM_CHOICES, None],
+      InputFields.mixed_rationale_choices_len: [NUM_CHOICES],
   }
   padding_values = {
       InputFields.img_id: '',
@@ -281,6 +333,12 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.rationale_choices: PAD,
       InputFields.rationale_choices_tag: -1,
       InputFields.rationale_choices_len: 0,
+      InputFields.mixed_answer_choices: PAD,
+      InputFields.mixed_answer_choices_tag: -1,
+      InputFields.mixed_answer_choices_len: 0,
+      InputFields.mixed_rationale_choices: PAD,
+      InputFields.mixed_rationale_choices_tag: -1,
+      InputFields.mixed_rationale_choices_len: 0,
   }
   dataset = dataset.padded_batch(batch_size,
                                  padded_shapes=padded_shapes,

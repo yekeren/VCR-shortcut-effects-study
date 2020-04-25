@@ -58,8 +58,14 @@ class InputFields(object):
   answer_choices = 'answer_choices'
   answer_choices_tag = 'answer_choices_tag'
   answer_choices_len = 'answer_choices_len'
+  mixed_answer_choices = 'mixed_answer_choices'
+  mixed_answer_choices_tag = 'mixed_answer_choices_tag'
+  mixed_answer_choices_len = 'mixed_answer_choices_len'
 
   # Rationale choices.
   rationale_choices = 'rationale_choices'
   rationale_choices_tag = 'rationale_choices_tag'
   rationale_choices_len = 'rationale_choices_len'
+  mixed_rationale_choices = 'mixed_rationale_choices'
+  mixed_rationale_choices_tag = 'mixed_rationale_choices_tag'
+  mixed_rationale_choices_len = 'mixed_rationale_choices_len'
