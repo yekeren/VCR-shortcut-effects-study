@@ -142,8 +142,7 @@ class VBertOffline(ModelBase):
     raise ValueError('Invalid `detection_adaptation`.')
 
   def create_bert_input_tensors(self, num_detections, detection_classes,
-                                detection_features, caption,
-                                caption_tag_feature, caption_len):
+                                detection_features, caption, caption_len):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -151,7 +150,6 @@ class VBertOffline(ModelBase):
       detection_classes: A [batch, max_detections] string tensor.
       detection_features: A [batch, max_detections, dims] float tensor.
       caption: A [batch, max_caption_len] string tensor.
-      caption_tag_feature: A [batch, max_caption_len, dims] float tensor.
       caption_len: A [batch] int tensor.
 
     Returns:
@@ -175,15 +173,18 @@ class VBertOffline(ModelBase):
     # Create input tokens.
     token_cls = tf.fill([batch_size, 1], CLS)
     token_sep = tf.fill([batch_size, 1], SEP)
+    detection_classes_masked = tf.fill([batch_size, max_detections], MASK)
     input_tokens = tf.concat(
-        [token_cls, detection_classes, token_sep, caption, token_sep], axis=-1)
+        [token_cls, detection_classes_masked, token_sep, caption, token_sep],
+        axis=-1)
     input_ids = token_to_id_func(input_tokens)
 
     # Create input features.
     feature_dims = detection_features.shape[-1]
     feature_zeros = tf.fill([batch_size, 1, feature_dims], 0.0)
+    tag_features = tf.fill([batch_size, max_caption_len, feature_dims], 0.0)
     input_features = tf.concat([
-        feature_zeros, detection_features, feature_zeros, caption_tag_feature,
+        feature_zeros, detection_features, feature_zeros, tag_features,
         feature_zeros
     ], 1)
     return input_ids, input_masks, input_features
@@ -227,7 +228,6 @@ class VBertOffline(ModelBase):
                                detection_features,
                                caption,
                                caption_tag,
-                               caption_tag_feature,
                                caption_len,
                                mask_prob=0.15):
     """Predicts the matching score of the given image-text pair.
@@ -263,7 +263,7 @@ class VBertOffline(ModelBase):
     # BERT sequence prediction using the `masked_caption`.
     (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
         num_detections, detection_classes, detection_features, masked_caption,
-        caption_tag_feature, caption_len)
+        caption_len)
     bert_model = BertModel(self._bert_config,
                            self._is_training,
                            input_ids=input_ids,
@@ -284,7 +284,7 @@ class VBertOffline(ModelBase):
 
   def image_text_matching(self, num_detections, detection_classes,
                           detection_features, caption, caption_tag,
-                          caption_tag_feature, caption_len):
+                          caption_len):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -293,7 +293,6 @@ class VBertOffline(ModelBase):
       detection_features: A [batch, max_detections, dims] float tensor.
       caption: A [batch, max_caption_len] string tensor.
       caption_tag: A [batch, max_caption_len] int tensor.
-      caption_tag_feature: A [batch, max_caption_len, dims] float tensor.
       caption_len: A [batch] int tensor.
 
     Returns:
@@ -301,7 +300,7 @@ class VBertOffline(ModelBase):
     """
     (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
         num_detections, detection_classes, detection_features, caption,
-        caption_tag_feature, caption_len)
+        caption_len)
     bert_model = BertModel(self._bert_config,
                            self._is_training,
                            input_ids=input_ids,
@@ -323,6 +322,7 @@ class VBertOffline(ModelBase):
     options = self._model_proto
 
     # Decode fields from `inputs`.
+    img_id = inputs[InputFields.img_id]
     (num_detections, detection_boxes, detection_classes, detection_scores,
      detection_features) = (
          inputs[InputFields.num_detections],
@@ -344,23 +344,20 @@ class VBertOffline(ModelBase):
         inputs[InputFields.answer_choices_len],
         inputs[InputFields.answer_label],
     )
-    answer_tag_f = ground_detection_features(detection_features, answer_tag)
     (rationale, rationale_tag, rationale_len) = extract_ground_truth_annotation(
         inputs[InputFields.rationale_choices],
         inputs[InputFields.rationale_choices_tag],
         inputs[InputFields.rationale_choices_len],
         inputs[InputFields.rationale_label],
     )
-    rationale_tag_f = ground_detection_features(detection_features,
-                                                rationale_tag)
 
     # Pre-training task 1: Masked Language Modeling (MLM).
     predictions = {}
 
     reuse = False
-    for choice, choice_tag, choice_tag_f, choice_len, choice_type in [
-        (answer, answer_tag, answer_tag_f, answer_len, 'answer'),
-        (rationale, rationale_tag, rationale_tag_f, rationale_len, 'rationale')
+    for choice, choice_tag, choice_len, choice_type in [
+        (answer, answer_tag, answer_len, 'answer'),
+        (rationale, rationale_tag, rationale_len, 'rationale')
     ]:
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
         mlm_labels, mlm_logits = self.masked_language_modeling(
@@ -369,7 +366,6 @@ class VBertOffline(ModelBase):
             detection_features,
             choice,
             choice_tag,
-            choice_tag_f,
             choice_len,
             mask_prob=options.mask_probability)
         predictions.update({
@@ -380,46 +376,45 @@ class VBertOffline(ModelBase):
 
     # Pre-training task 2: Image-Text Matching (ITM).
     if options.use_image_text_matching_task:
-      for choice, choice_tag, choice_tag_f, choice_len, choice_type in [
-          (answer, answer_tag, answer_tag_f, answer_len, 'answer'),
-          (rationale, rationale_tag, rationale_tag_f, rationale_len,
-           'rationale')
+
+      # Generate binary labels.
+      img_ids_list = []
+      base_indices = tf.range(batch_size, dtype=tf.int32)
+      for index_offset in range(batch_size):
+        indices = (base_indices + index_offset) % batch_size
+        img_ids_list.append(tf.gather(img_id, indices, axis=0))
+      img_ids = tf.stack(img_ids_list, 1)
+      itm_labels = tf.equal(img_ids, tf.expand_dims(img_ids_list[0], 1))
+      itm_labels = tf.cast(itm_labels, tf.float32)
+      predictions.update({'itm/img_ids': img_ids, 'itm/labels': itm_labels})
+
+      for choice, choice_tag, choice_len, choice_type in [
+          (answer, answer_tag, answer_len, 'answer'),
+          (rationale, rationale_tag, rationale_len, 'rationale')
       ]:
         # Generate prediction for either answer or rationale.
         with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-          feature_to_predict_1 = self.image_text_matching(
-              num_detections, detection_classes, detection_features, choice,
-              choice_tag, choice_tag_f, choice_len)
-
-          feature_to_predict_0 = []
-          base_indices = tf.range(batch_size, dtype=tf.int32)
-          for index_offset in range(1, batch_size):
-            negative_indices = (base_indices + index_offset) % batch_size
-            feature_to_predict_0.append(
-                self.image_text_matching(
-                    num_detections, detection_classes, detection_features,
-                    tf.gather(choice, negative_indices, axis=0),
-                    tf.gather(choice_tag, negative_indices, axis=0),
-                    tf.gather(choice_tag_f, negative_indices, axis=0),
-                    tf.gather(choice_len, negative_indices, axis=0)))
+          bert_features = []
+          for index_offset in range(batch_size):
+            indices = (base_indices + index_offset) % batch_size
+            bert_features.append(
+                self.image_text_matching(num_detections, detection_classes,
+                                         detection_features,
+                                         tf.gather(choice, indices, axis=0),
+                                         tf.gather(choice_tag, indices, axis=0),
+                                         tf.gather(choice_len, indices,
+                                                   axis=0)))
 
         # Generate logits.
         with slim.arg_scope(self._slim_fc_scope):
-          itm_feature = tf.stack([feature_to_predict_1] + feature_to_predict_0,
-                                 1)
           itm_logits = slim.fully_connected(
-              itm_feature,
+              tf.stack(bert_features, 1),
               num_outputs=1,
               activation_fn=None,
               scope='itm/{}/logits'.format(choice_type))
           itm_logits = tf.squeeze(itm_logits, -1)
-        itm_labels = tf.concat([
-            tf.fill([batch_size, 1], 1.0),
-            tf.fill([batch_size, itm_logits.shape[-1] - 1], 0.0)
-        ], -1)
         predictions.update({
             'itm/{}/logits'.format(choice_type): itm_logits,
-            'itm/{}/labels'.format(choice_type): itm_labels,
         })
       # END for answer, rationale
 
@@ -455,7 +450,7 @@ class VBertOffline(ModelBase):
 
       if options.use_image_text_matching_task:
         losses = tf.nn.sigmoid_cross_entropy_with_logits(
-            labels=predictions['itm/{}/labels'.format(choice_type)],
+            labels=predictions['itm/labels'],
             logits=predictions['itm/{}/logits'.format(choice_type)])
         loss_dict['itm_{}_sigmoid_cross_entropy'.format(
             choice_type)] = tf.reduce_mean(losses)
@@ -487,19 +482,18 @@ class VBertOffline(ModelBase):
 
       # ITM metrics.
       if options.use_image_text_matching_task:
-        true = tf.argmax(predictions['itm/{}/labels'.format(choice_type)], -1)
+        true = predictions['itm/labels']
+        pred = predictions['itm/{}/logits'.format(choice_type)]
 
         accuracy = tf.keras.metrics.Accuracy()
-        pred = tf.argmax(
-            predictions['itm/{}/logits'.format(choice_type)][:, :2], -1)
-        accuracy.update_state(true, pred)
-        metric_dict['metrics/itm_{}_accuracy_neg@1'.format(
+        accuracy.update_state(tf.argmax(true, -1), tf.argmax(pred, -1))
+        metric_dict['metrics/itm_{}_accuracy_neg@all'.format(
             choice_type)] = accuracy
 
         accuracy = tf.keras.metrics.Accuracy()
-        pred = tf.argmax(predictions['itm/{}/logits'.format(choice_type)], -1)
-        accuracy.update_state(true, pred)
-        metric_dict['metrics/itm_{}_accuracy_neg@all'.format(
+        accuracy.update_state(tf.argmax(true[:, :2], -1),
+                              tf.argmax(pred[:, :2], -1))
+        metric_dict['metrics/itm_{}_accuracy_neg@1'.format(
             choice_type)] = accuracy
     return metric_dict
 

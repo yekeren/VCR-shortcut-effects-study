@@ -51,7 +51,9 @@ message VBertOffline{
   // Method to adapt detection feature.
   optional DetectionAdaptation detection_adaptation = 25 [default = LINEAR];
 
-  optional bool use_image_text_matching_task = 26 [default = false];
+  optional bool use_image_text_matching_task = 26 [default = true];
+
+  optional bool use_caption_tag_feature = 27 [default = false];
 }
 
 
