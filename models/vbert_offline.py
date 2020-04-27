@@ -380,7 +380,7 @@ class VBertOffline(ModelBase):
       # Generate binary labels.
       img_ids_list = []
       base_indices = tf.range(batch_size, dtype=tf.int32)
-      for index_offset in range(batch_size):
+      for index_offset in range(min(batch_size, 4)):
         indices = (base_indices + index_offset) % batch_size
         img_ids_list.append(tf.gather(img_id, indices, axis=0))
       img_ids = tf.stack(img_ids_list, 1)
@@ -395,7 +395,8 @@ class VBertOffline(ModelBase):
         # Generate prediction for either answer or rationale.
         with tf.variable_scope(tf.get_variable_scope(), reuse=True):
           bert_features = []
-          for index_offset in range(batch_size):
+          # for index_offset in range(batch_size):
+          for index_offset in range(min(batch_size, 4)):
             indices = (base_indices + index_offset) % batch_size
             bert_features.append(
                 self.image_text_matching(num_detections, detection_classes,
@@ -427,7 +428,8 @@ class VBertOffline(ModelBase):
     # Restore from detection-mlp checkpoint.
     if options.HasField('detection_mlp_checkpoint_file'):
       assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint([
-          x for x in tf.global_variables() if x.op.name.startswith('detection')
+          x for x in tf.global_variables()
+          if x.op.name.startswith('detection/project/')
       ], options.detection_mlp_checkpoint_file)
       tf.train.init_from_checkpoint(options.detection_mlp_checkpoint_file,
                                     assignment_map)

@@ -164,43 +164,21 @@ class VBertFtOffline(ModelBase):
     is_training = self._is_training
     options = self._model_proto
 
-    if options.detection_adaptation == model_pb2.LINEAR:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
-      return detection_features
+    assert options.detection_adaptation == model_pb2.MLP
 
-    elif options.detection_adaptation == model_pb2.MLP:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=tf.nn.relu,
-                                                scope='detection/project')
-      detection_features = slim.dropout(detection_features,
-                                        keep_prob=options.dropout_keep_prob,
-                                        is_training=is_training)
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/adaptation')
-      return detection_features
-
-    elif options.detection_adaptation == model_pb2.MLP_RES:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
-      detection_features_res = slim.dropout(tf.nn.relu(detection_features),
-                                            keep_prob=options.dropout_keep_prob,
-                                            is_training=is_training)
-      detection_features_res = slim.fully_connected(
-          detection_features_res,
-          self._bert_config.hidden_size,
-          activation_fn=None,
-          scope='detection/adaptation')
-      return detection_features + detection_features_res
-
-    raise ValueError('Invalid `detection_adaptation`.')
+    detection_features = slim.fully_connected(
+        detection_features,
+        options.detection_mlp_hidden_units,
+        activation_fn=tf.nn.relu,
+        scope='detection/project')
+    detection_features = slim.dropout(detection_features,
+                                      keep_prob=options.dropout_keep_prob,
+                                      is_training=is_training)
+    detection_features = slim.fully_connected(detection_features,
+                                              self._bert_config.hidden_size,
+                                              activation_fn=None,
+                                              scope='detection/adaptation')
+    return detection_features
 
   def create_bert_input_tensors(self,
                                 num_detections,
@@ -376,7 +354,8 @@ class VBertFtOffline(ModelBase):
     # Restore from detection-mlp checkpoint.
     if options.HasField('detection_mlp_checkpoint_file'):
       assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint([
-          x for x in tf.global_variables() if x.op.name.startswith('detection')
+          x for x in tf.global_variables()
+          if x.op.name.startswith('detection/project/')
       ], options.detection_mlp_checkpoint_file)
       tf.train.init_from_checkpoint(options.detection_mlp_checkpoint_file,
                                     assignment_map)
