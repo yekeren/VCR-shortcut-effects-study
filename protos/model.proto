@@ -30,6 +30,9 @@ message VBertOffline{
   // Out-of-Vocabulary token id.
   optional uint32 bert_unk_token_id = 4 [default = 100];
 
+  // Path to the pre-trained detection mlp checkpoint.
+  optional string detection_mlp_checkpoint_file = 6;
+
   // Keep probability of all dropout layers.
   optional float dropout_keep_prob = 12 [default = 1.0];
 

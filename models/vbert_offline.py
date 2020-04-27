@@ -12,7 +12,6 @@ from protos import model_pb2
 import bert2.modeling as modeling
 from bert2.modeling import BertConfig
 from bert2.modeling import BertModel
-from bert2.modeling import get_assignment_map_from_checkpoint
 
 from readers.vcr_fields import InputFields
 from readers.vcr_fields import NUM_CHOICES
@@ -21,6 +20,7 @@ from modeling.layers import token_to_id
 from modeling.models import fast_rcnn
 from modeling.utils import hyperparams
 from modeling.utils import visualization
+from modeling.utils import checkpoints
 from models.model_base import ModelBase
 
 UNK = '[UNK]'
@@ -419,11 +419,18 @@ class VBertOffline(ModelBase):
       # END for answer, rationale
 
     # Restore from BERT checkpoint.
-    assignment_map, _ = get_assignment_map_from_checkpoint(
-        tf.global_variables(), options.bert_checkpoint_file)
-    if 'global_step' in assignment_map:
-      assignment_map.pop('global_step')
+    assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
+        [x for x in tf.global_variables() if x.op.name.startswith('bert')],
+        options.bert_checkpoint_file)
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
+
+    # Restore from detection-mlp checkpoint.
+    if options.HasField('detection_mlp_checkpoint_file'):
+      assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint([
+          x for x in tf.global_variables() if x.op.name.startswith('detection')
+      ], options.detection_mlp_checkpoint_file)
+      tf.train.init_from_checkpoint(options.detection_mlp_checkpoint_file,
+                                    assignment_map)
 
     return predictions
 
