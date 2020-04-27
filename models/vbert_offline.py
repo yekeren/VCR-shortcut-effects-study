@@ -513,12 +513,16 @@ class VBertOffline(ModelBase):
       A list of trainable model variables.
     """
     options = self._model_proto
+    trainable_variables = tf.compat.v1.trainable_variables()
 
-    if options.freeze_first_stage_feature_extractor:
-      trainable_variables = [
-          x for x in tf.trainable_variables()
-          if 'FirstStageFeatureExtractor' not in x.op.name
-      ]
-      return trainable_variables
+    # Look for BERT frozen variables.
+    frozen_variables = []
+    for var in trainable_variables:
+      for name_pattern in options.frozen_variable_patterns:
+        if name_pattern in var.op.name:
+          frozen_variables.append(var)
+          break
 
-    return None
+    # Get trainable variables.
+    var_list = list(set(trainable_variables) - set(frozen_variables))
+    return var_list

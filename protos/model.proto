@@ -36,14 +36,14 @@ message VBertOffline{
   // Keep probability of all dropout layers.
   optional float dropout_keep_prob = 12 [default = 1.0];
 
+  // Frozen variable patterns.
+  repeated string frozen_variable_patterns = 14;
+
   // Hyperparameters of the fully-connected layers.
   optional Hyperparams fc_hyperparams = 16;
 
   // Mask probability of the Masked Language Modeling.
   optional float mask_probability = 21 [default = 0.15];
-
-  // If true, freeze the FirstStageFeatureExtractor in the detection model.
-  optional bool freeze_first_stage_feature_extractor = 22 [default = true];
 
   // Maximum number of detections.
   optional uint32 max_num_detections = 23 [default = 999];
