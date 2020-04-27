@@ -446,7 +446,9 @@ class VBertOffline(ModelBase):
           labels=predictions['mlm/{}/labels'.format(choice_type)],
           logits=predictions['mlm/{}/logits'.format(choice_type)])
       loss_dict['mlm_{}_sparse_softmax_cross_entropy'.format(
-          choice_type)] = tf.reduce_mean(losses)
+          choice_type)] = tf.cond(tf.shape(losses)[0] > 0,
+                                  true_fn=lambda: tf.reduce_mean(losses),
+                                  false_fn=lambda: 0.0)
 
       if options.use_image_text_matching_task:
         losses = tf.nn.sigmoid_cross_entropy_with_logits(

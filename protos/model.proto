@@ -77,6 +77,9 @@ message VBertFtOffline {
   // Out-of-Vocabulary token id.
   optional uint32 bert_unk_token_id = 5 [default = 100];
 
+  // Path to the pre-trained detection mlp checkpoint.
+  optional string detection_mlp_checkpoint_file = 6;
+
   // Maximum number of objects to be used in the model.
   optional int32 max_num_detections = 7 [default = 10];
 
