@@ -45,13 +45,18 @@ model {
           stddev: 0.01
         }
       }
-      batch_norm {
-        decay: 0.999
-        center: true
-        scale: false
-        epsilon: 0.001
-      }
     }
+    frozen_variable_patterns: 'bert/embeddings/'
+    frozen_variable_patterns: 'bert/encoder/layer_0/'
+    frozen_variable_patterns: 'bert/encoder/layer_1/'
+    frozen_variable_patterns: 'bert/encoder/layer_2/'
+    frozen_variable_patterns: 'bert/encoder/layer_3/'
+    frozen_variable_patterns: 'bert/encoder/layer_4/'
+    frozen_variable_patterns: 'bert/encoder/layer_5/'
+    frozen_variable_patterns: 'bert/encoder/layer_6/'
+    frozen_variable_patterns: 'bert/encoder/layer_7/'
+    frozen_variable_patterns: 'bert/encoder/layer_8/'
+    frozen_variable_patterns: 'bert/encoder/layer_9/'
   }
 }
 train_config {
