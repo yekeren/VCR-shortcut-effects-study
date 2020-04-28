@@ -156,8 +156,9 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
     strategy = tf.contrib.distribute.MirroredStrategy()
   run_config = tf.estimator.RunConfig(
       train_distribute=strategy,
-      session_config=tf.ConfigProto(gpu_options=tf.GPUOptions(
-          allow_growth=True)),
+      session_config=tf.ConfigProto(
+          allow_soft_placement=True,
+          gpu_options=tf.GPUOptions(allow_growth=True)),
       save_summary_steps=train_config.save_summary_steps,
       save_checkpoints_steps=train_config.save_checkpoints_steps,
       keep_checkpoint_max=train_config.keep_checkpoint_max,

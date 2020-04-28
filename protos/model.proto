@@ -3,7 +3,7 @@ syntax = "proto2";
 import "protos/fast_rcnn.proto";
 import "protos/hyperparams.proto";
 
-enum DetectionAdaptation {
+enum AdaptationMethod {
   LINEAR = 1;
   MLP = 2;
   MLP_RES = 3;
@@ -52,11 +52,14 @@ message VBertOffline{
   optional uint32 max_caption_len = 24 [default = 999];
 
   // Method to adapt detection feature.
-  optional DetectionAdaptation detection_adaptation = 25 [default = LINEAR];
+  optional AdaptationMethod detection_adaptation = 25 [default = LINEAR];
 
   optional bool use_image_text_matching_task = 26 [default = true];
 
   optional bool use_caption_tag_feature = 27 [default = false];
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 28 [default = 768];
 }
 
 
@@ -102,8 +105,14 @@ message VBertFtOffline {
   optional bool use_detection_class_labels = 21 [default = true];
 
   // Method to adapt detection feature.
-  optional DetectionAdaptation detection_adaptation = 22 [default = MLP];
+  optional AdaptationMethod detection_adaptation = 22 [default = LINEAR];
 
   // Hidden units of the detection mlp.
   optional uint32 detection_mlp_hidden_units = 23 [default = 768];
+
+  // Method to adapt VCR feature.
+  optional AdaptationMethod vcr_adaptation = 24 [default = LINEAR];
+
+  // Hidden units of the VCR mlp.
+  optional uint32 vcr_mlp_hidden_units = 25 [default = 768];
 }

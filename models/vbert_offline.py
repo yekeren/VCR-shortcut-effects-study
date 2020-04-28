@@ -103,43 +103,21 @@ class VBertOffline(ModelBase):
     is_training = self._is_training
     options = self._model_proto
 
-    if options.detection_adaptation == model_pb2.LINEAR:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
-      return detection_features
+    assert options.detection_adaptation == model_pb2.MLP
 
-    elif options.detection_adaptation == model_pb2.MLP:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=tf.nn.relu,
-                                                scope='detection/project')
-      detection_features = slim.dropout(detection_features,
-                                        keep_prob=options.dropout_keep_prob,
-                                        is_training=is_training)
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/adaptation')
-      return detection_features
-
-    elif options.detection_adaptation == model_pb2.MLP_RES:
-      detection_features = slim.fully_connected(detection_features,
-                                                self._bert_config.hidden_size,
-                                                activation_fn=None,
-                                                scope='detection/project')
-      detection_features_res = slim.dropout(tf.nn.relu(detection_features),
-                                            keep_prob=options.dropout_keep_prob,
-                                            is_training=is_training)
-      detection_features_res = slim.fully_connected(
-          detection_features_res,
-          self._bert_config.hidden_size,
-          activation_fn=None,
-          scope='detection/adaptation')
-      return detection_features + detection_features_res
-
-    raise ValueError('Invalid `detection_adaptation`.')
+    detection_features = slim.fully_connected(
+        detection_features,
+        options.detection_mlp_hidden_units,
+        activation_fn=tf.nn.relu,
+        scope='detection/project')
+    detection_features = slim.dropout(detection_features,
+                                      keep_prob=options.dropout_keep_prob,
+                                      is_training=is_training)
+    detection_features = slim.fully_connected(detection_features,
+                                              self._bert_config.hidden_size,
+                                              activation_fn=None,
+                                              scope='detection/adaptation')
+    return detection_features
 
   def create_bert_input_tensors(self, num_detections, detection_classes,
                                 detection_features, caption, caption_len):
@@ -378,9 +356,13 @@ class VBertOffline(ModelBase):
     if options.use_image_text_matching_task:
 
       # Generate binary labels.
+      random_offset = tf.random.uniform(shape=[],
+                                        minval=1,
+                                        maxval=batch_size,
+                                        dtype=tf.int32)
       img_ids_list = []
       base_indices = tf.range(batch_size, dtype=tf.int32)
-      for index_offset in range(min(batch_size, 4)):
+      for index_offset in [0, random_offset]:
         indices = (base_indices + index_offset) % batch_size
         img_ids_list.append(tf.gather(img_id, indices, axis=0))
       img_ids = tf.stack(img_ids_list, 1)
@@ -395,8 +377,7 @@ class VBertOffline(ModelBase):
         # Generate prediction for either answer or rationale.
         with tf.variable_scope(tf.get_variable_scope(), reuse=True):
           bert_features = []
-          # for index_offset in range(batch_size):
-          for index_offset in range(min(batch_size, 4)):
+          for index_offset in [0, random_offset]:
             indices = (base_indices + index_offset) % batch_size
             bert_features.append(
                 self.image_text_matching(num_detections, detection_classes,
