@@ -84,7 +84,7 @@ message VBertFtOffline {
   optional string detection_mlp_checkpoint_file = 6;
 
   // Maximum number of objects to be used in the model.
-  optional int32 max_num_detections = 7 [default = 10];
+  optional uint32 max_num_detections = 7 [default = 10];
 
   // Hyperparameters of the fully-connected layers.
   optional Hyperparams fc_hyperparams = 11;
@@ -102,5 +102,8 @@ message VBertFtOffline {
   optional bool use_detection_class_labels = 21 [default = true];
 
   // Method to adapt detection feature.
-  optional DetectionAdaptation detection_adaptation = 22 [default = LINEAR];
+  optional DetectionAdaptation detection_adaptation = 22 [default = MLP];
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
 }
