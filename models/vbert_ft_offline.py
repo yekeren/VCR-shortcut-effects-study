@@ -9,7 +9,6 @@ import numpy as np
 import tensorflow as tf
 
 from protos import model_pb2
-from modeling.layers import token_to_id
 from modeling.models import fast_rcnn
 from modeling.utils import hyperparams
 from modeling.utils import visualization
@@ -26,12 +25,18 @@ import tf_slim as slim
 
 FIELD_ANSWER_PREDICTION = 'answer_prediction'
 
-UNK = '[UNK]'
-CLS = '[CLS]'
-SEP = '[SEP]'
-MASK = '[MASK]'
+# UNK = '[UNK]'
+# CLS = '[CLS]'
+# SEP = '[SEP]'
+# MASK = '[MASK]'
+#
+# IMG = '[unused400]'
+UNK_ID = 100
+CLS_ID = 101
+SEP_ID = 102
+MASK_ID = 103
 
-IMG = '[unused400]'
+IMG_ID = 405
 
 
 def remove_detections(num_detections,
@@ -134,8 +139,6 @@ class VBertFtOffline(ModelBase):
 
     options = model_proto
 
-    self._token_to_id_func = token_to_id.TokenToIdLayer(
-        options.bert_vocab_file, options.bert_unk_token_id)
     self._bert_config = BertConfig.from_json_file(options.bert_config_file)
 
     self._slim_fc_scope = hyperparams.build_hyperparams(options.fc_hyperparams,
@@ -213,7 +216,6 @@ class VBertFtOffline(ModelBase):
       input_features: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
     """
     batch_size = num_detections.shape[0]
-    token_to_id_func = self._token_to_id_func
 
     # Create input masks.
     mask_one = tf.fill([batch_size, 1], True)
@@ -226,14 +228,14 @@ class VBertFtOffline(ModelBase):
     ], -1)
 
     # Create input tokens.
-    token_cls = tf.fill([batch_size, 1], CLS)
-    token_sep = tf.fill([batch_size, 1], SEP)
+    token_cls = tf.fill([batch_size, 1], CLS_ID)
+    token_sep = tf.fill([batch_size, 1], SEP_ID)
     if not use_detection_class_labels:
-      detection_classes = tf.fill([batch_size, max_detections], MASK)
+      detection_classes = tf.fill([batch_size, max_detections], MASK_ID)
 
-    input_tokens = tf.concat([token_cls, detection_classes, caption, token_sep],
-                             axis=-1)
-    input_ids = token_to_id_func(input_tokens)
+    input_ids = tf.concat([token_cls, detection_classes, caption, token_sep],
+                          axis=-1)
+    # input_ids = token_to_id_func(input_tokens)
 
     # Create input features.
     zeros = tf.fill([batch_size, 1, detection_features.shape[-1]], 0.0)

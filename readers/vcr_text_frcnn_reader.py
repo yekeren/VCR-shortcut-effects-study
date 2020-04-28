@@ -9,6 +9,7 @@ import tensorflow as tf
 from tf_slim import tfexample_decoder
 from protos import reader_pb2
 from readers.vcr_fields import *
+from modeling.layers import token_to_id
 
 
 def _pad_sequences(sequences, pad=PAD):
@@ -43,8 +44,12 @@ def _update_decoded_example(decoded_example, options):
   Returns:
     decoded_example: The same instance with content modified.
   """
+  token_to_id_func = token_to_id.TokenToIdLayer(
+      'data/bert/tf1.x/BERT-Base/vocab.txt', 100)
+
   # Number of objects.
   detection_boxes = decoded_example[InputFields.detection_boxes]
+  detection_classes = decoded_example[InputFields.detection_classes]
   num_detections = tf.shape(detection_boxes)[0]
 
   # Object Fast-RCNN features.
@@ -115,34 +120,37 @@ def _update_decoded_example(decoded_example, options):
   decoded_example.update({
       InputFields.num_detections:
           num_detections,
+      InputFields.detection_classes:
+          token_to_id_func(detection_classes),
       InputFields.detection_features:
           detection_features,
       InputFields.question:
-          tf.tile(tf.expand_dims(question, 0), [NUM_CHOICES, 1]),
+          tf.tile(tf.expand_dims(token_to_id_func(question), 0),
+                  [NUM_CHOICES, 1]),
       InputFields.question_tag:
           tf.tile(tf.expand_dims(question_tag, 0), [NUM_CHOICES, 1]),
       InputFields.question_len:
           tf.tile(tf.expand_dims(question_len, 0), [NUM_CHOICES]),
       InputFields.answer_choices:
-          answer_choices,
+          token_to_id_func(answer_choices),
       InputFields.answer_choices_tag:
           answer_choices_tag,
       InputFields.answer_choices_len:
           answer_choices_len,
       InputFields.rationale_choices:
-          rationale_choices,
+          token_to_id_func(rationale_choices),
       InputFields.rationale_choices_tag:
           rationale_choices_tag,
       InputFields.rationale_choices_len:
           rationale_choices_len,
       InputFields.mixed_answer_choices:
-          mixed_answer_choices,
+          token_to_id_func(mixed_answer_choices),
       InputFields.mixed_answer_choices_tag:
           mixed_answer_choices_tag,
       InputFields.mixed_answer_choices_len:
           mixed_answer_choices_len,
       InputFields.mixed_rationale_choices:
-          mixed_rationale_choices,
+          token_to_id_func(mixed_rationale_choices),
       InputFields.mixed_rationale_choices_tag:
           mixed_rationale_choices_tag,
       InputFields.mixed_rationale_choices_len:
@@ -321,22 +329,22 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.rationale_label: -1,
       InputFields.num_detections: 0,
       InputFields.detection_boxes: 0.0,
-      InputFields.detection_classes: '',
+      InputFields.detection_classes: PAD_ID,
       InputFields.detection_scores: 0.0,
       InputFields.detection_features: 0.0,
-      InputFields.question: PAD,
+      InputFields.question: PAD_ID,
       InputFields.question_tag: -1,
       InputFields.question_len: 0,
-      InputFields.answer_choices: PAD,
+      InputFields.answer_choices: PAD_ID,
       InputFields.answer_choices_tag: -1,
       InputFields.answer_choices_len: 0,
-      InputFields.rationale_choices: PAD,
+      InputFields.rationale_choices: PAD_ID,
       InputFields.rationale_choices_tag: -1,
       InputFields.rationale_choices_len: 0,
-      InputFields.mixed_answer_choices: PAD,
+      InputFields.mixed_answer_choices: PAD_ID,
       InputFields.mixed_answer_choices_tag: -1,
       InputFields.mixed_answer_choices_len: 0,
-      InputFields.mixed_rationale_choices: PAD,
+      InputFields.mixed_rationale_choices: PAD_ID,
       InputFields.mixed_rationale_choices_tag: -1,
       InputFields.mixed_rationale_choices_len: 0,
   }

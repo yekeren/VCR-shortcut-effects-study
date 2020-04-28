@@ -4,6 +4,7 @@ from __future__ import print_function
 
 PAD = '[PAD]'
 NUM_CHOICES = 4
+PAD_ID = 0
 
 
 class TFExampleFields(object):
