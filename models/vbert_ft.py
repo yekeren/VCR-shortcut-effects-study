@@ -31,13 +31,12 @@ FIELD_DETECTION_PREDICTION = 'detection_prediction'
 # CLS = '[CLS]'
 # SEP = '[SEP]'
 # MASK = '[MASK]'
-#
 # IMG = '[unused400]'
+
 UNK_ID = 100
 CLS_ID = 101
 SEP_ID = 102
 MASK_ID = 103
-
 IMG_ID = 405
 
 
@@ -388,19 +387,20 @@ class VBertFt(ModelBase):
                                     scope='itm/logits')
     predictions = {FIELD_ANSWER_PREDICTION: tf.squeeze(logits, -1)}
 
-    # # Predict the detection labels.
-    # if options.use_detection_loss:
-    #   detection_predictions = self.decode_bert_embedding(
-    #       detection_features, embedding_table)
-    #   predictions.update({
-    #       FIELD_NUM_DETECTIONS: num_detections,
-    #       FIELD_DETECTION_CLASSES: detection_classes,
-    #       FIELD_DETECTION_PREDICTION: detection_predictions,
-    #   })
+    # Predict the detection labels.
+    if options.use_detection_loss:
+      detection_predictions = self.decode_bert_embedding(
+          detection_features, embedding_table)
+      predictions.update({
+          FIELD_NUM_DETECTIONS: num_detections,
+          FIELD_DETECTION_CLASSES: detection_classes,
+          FIELD_DETECTION_PREDICTION: detection_predictions,
+      })
 
     # Restore from BERT checkpoint.
     assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
-        [x for x in tf.global_variables() if x.op.name.startswith('bert') ],  # IMPORTANT
+        [x for x in tf.global_variables() if x.op.name.startswith('bert')
+        ],  # IMPORTANT to filter using `bert`.
         options.bert_checkpoint_file)
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
 
@@ -427,21 +427,21 @@ class VBertFt(ModelBase):
 
     loss_dict = {'crossentropy': tf.reduce_mean(losses)}
 
-    # # Detection label prediction, the 0-th position is the full image.
-    # if options.use_detection_loss:
-    #   num_detections = predictions[FIELD_NUM_DETECTIONS]
-    #   detection_classes = predictions[FIELD_DETECTION_CLASSES]
+    # Detection label prediction, the 0-th position is the full image.
+    if options.use_detection_loss:
+      num_detections = predictions[FIELD_NUM_DETECTIONS]
+      detection_classes = predictions[FIELD_DETECTION_CLASSES]
 
-    #   detection_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    #       labels=detection_classes,
-    #       logits=predictions[FIELD_DETECTION_PREDICTION])
-    #   detection_masks = tf.sequence_mask(num_detections,
-    #                                      maxlen=tf.shape(detection_classes)[1],
-    #                                      dtype=tf.float32)
-    #   detection_losses = masked_ops.masked_avg(data=detection_losses[:, 1:],
-    #                                            mask=detection_masks[:, 1:],
-    #                                            dim=1)
-    #   loss_dict.update({'detection_loss': tf.reduce_mean(detection_losses)})
+      detection_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          labels=detection_classes,
+          logits=predictions[FIELD_DETECTION_PREDICTION])
+      detection_masks = tf.sequence_mask(num_detections,
+                                         maxlen=tf.shape(detection_classes)[1],
+                                         dtype=tf.float32)
+      detection_losses = masked_ops.masked_avg(data=detection_losses[:, 1:],
+                                               mask=detection_masks[:, 1:],
+                                               dim=1)
+      loss_dict.update({'detection_loss': tf.reduce_mean(detection_losses)})
 
     return loss_dict
 
@@ -467,24 +467,24 @@ class VBertFt(ModelBase):
     accuracy_metric.update_state(y_true, y_pred)
     metric_dict = {'metrics/accuracy': accuracy_metric}
 
-    # # Detection prediction.
-    # if options.use_detection_loss:
-    #   num_detections = predictions[FIELD_NUM_DETECTIONS]
-    #   detection_classes = predictions[FIELD_DETECTION_CLASSES]
+    # Detection prediction.
+    if options.use_detection_loss:
+      num_detections = predictions[FIELD_NUM_DETECTIONS]
+      detection_classes = predictions[FIELD_DETECTION_CLASSES]
 
-    #   detection_predictions = tf.argmax(predictions[FIELD_DETECTION_PREDICTION],
-    #                                     axis=-1)
-    #   detection_masks = tf.sequence_mask(num_detections,
-    #                                      maxlen=tf.shape(detection_classes)[1],
-    #                                      dtype=tf.float32)
+      detection_predictions = tf.argmax(predictions[FIELD_DETECTION_PREDICTION],
+                                        axis=-1)
+      detection_masks = tf.sequence_mask(num_detections,
+                                         maxlen=tf.shape(detection_classes)[1],
+                                         dtype=tf.float32)
 
-    #   detection_classes = tf.boolean_mask(detection_classes[:, 1:],
-    #                                       detection_masks[:, 1:])
-    #   detection_predictions = tf.boolean_mask(detection_predictions[:, 1:],
-    #                                           detection_masks[:, 1:])
-    #   accuracy_metric = tf.keras.metrics.Accuracy()
-    #   accuracy_metric.update_state(detection_classes, detection_predictions)
-    #   metric_dict.update({'metrics/detection_accuracy': accuracy_metric})
+      detection_classes = tf.boolean_mask(detection_classes[:, 1:],
+                                          detection_masks[:, 1:])
+      detection_predictions = tf.boolean_mask(detection_predictions[:, 1:],
+                                              detection_masks[:, 1:])
+      accuracy_metric = tf.keras.metrics.Accuracy()
+      accuracy_metric.update_state(detection_classes, detection_predictions)
+      metric_dict.update({'metrics/detection_accuracy': accuracy_metric})
     return metric_dict
 
   def get_variables_to_train(self):
