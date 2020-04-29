@@ -282,38 +282,38 @@ class VBertFt(ModelBase):
                                          scope='bert')
     return bert_model.get_pooled_output(), bert_model.get_embedding_table()
 
-  def decode_bert_embedding(self, input_tensor, output_weights):
-    """Decodes bert output.
+  # def decode_bert_embedding(self, input_tensor, output_weights):
+  #   """Decodes bert output.
 
-    Args:
-      input_tensor: A [batch, hidden_size] float tensor.
-      output_weights: A [vocab_size, hidden_size] float tensor, the embedding matrix.
+  #   Args:
+  #     input_tensor: A [batch, hidden_size] float tensor.
+  #     output_weights: A [vocab_size, hidden_size] float tensor, the embedding matrix.
 
-    Returns:
-      logits: A [batch, vocab_size] float tensor.
-    """
-    bert_config = self._bert_config
+  #   Returns:
+  #     logits: A [batch, vocab_size] float tensor.
+  #   """
+  #   bert_config = self._bert_config
 
-    with tf.variable_scope("cls/predictions"):
-      # We apply one more non-linear transformation before the output layer.
-      # This matrix is not used after pre-training.
-      with tf.variable_scope("transform"):
-        input_tensor = tf.layers.dense(
-            input_tensor,
-            units=bert_config.hidden_size,
-            activation=bert_modeling.get_activation(bert_config.hidden_act),
-            kernel_initializer=bert_modeling.create_initializer(
-                bert_config.initializer_range))
-        input_tensor = bert_modeling.layer_norm(input_tensor)
+  #   with tf.variable_scope("cls/predictions"):
+  #     # We apply one more non-linear transformation before the output layer.
+  #     # This matrix is not used after pre-training.
+  #     with tf.variable_scope("transform"):
+  #       input_tensor = tf.layers.dense(
+  #           input_tensor,
+  #           units=bert_config.hidden_size,
+  #           activation=bert_modeling.get_activation(bert_config.hidden_act),
+  #           kernel_initializer=bert_modeling.create_initializer(
+  #               bert_config.initializer_range))
+  #       input_tensor = bert_modeling.layer_norm(input_tensor)
 
-      # The output weights are the same as the input embeddings, but there is
-      # an output-only bias for each token.
-      output_bias = tf.get_variable("output_bias",
-                                    shape=[bert_config.vocab_size],
-                                    initializer=tf.zeros_initializer())
-      logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
-      logits = tf.nn.bias_add(logits, output_bias)
-    return logits
+  #     # The output weights are the same as the input embeddings, but there is
+  #     # an output-only bias for each token.
+  #     output_bias = tf.get_variable("output_bias",
+  #                                   shape=[bert_config.vocab_size],
+  #                                   initializer=tf.zeros_initializer())
+  #     logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
+  #     logits = tf.nn.bias_add(logits, output_bias)
+  #   return logits
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -388,19 +388,20 @@ class VBertFt(ModelBase):
                                     scope='itm/logits')
     predictions = {FIELD_ANSWER_PREDICTION: tf.squeeze(logits, -1)}
 
-    # Predict the detection labels.
-    if options.use_detection_loss:
-      detection_predictions = self.decode_bert_embedding(
-          detection_features, embedding_table)
-      predictions.update({
-          FIELD_NUM_DETECTIONS: num_detections,
-          FIELD_DETECTION_CLASSES: detection_classes,
-          FIELD_DETECTION_PREDICTION: detection_predictions,
-      })
+    # # Predict the detection labels.
+    # if options.use_detection_loss:
+    #   detection_predictions = self.decode_bert_embedding(
+    #       detection_features, embedding_table)
+    #   predictions.update({
+    #       FIELD_NUM_DETECTIONS: num_detections,
+    #       FIELD_DETECTION_CLASSES: detection_classes,
+    #       FIELD_DETECTION_PREDICTION: detection_predictions,
+    #   })
 
     # Restore from BERT checkpoint.
     assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
-        tf.global_variables(), options.bert_checkpoint_file)
+        [x for x in tf.global_variables() if x.op.name.startswith('bert') ],  # IMPORTANT
+        options.bert_checkpoint_file)
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
 
     return predictions
@@ -426,21 +427,21 @@ class VBertFt(ModelBase):
 
     loss_dict = {'crossentropy': tf.reduce_mean(losses)}
 
-    # Detection label prediction, the 0-th position is the full image.
-    if options.use_detection_loss:
-      num_detections = predictions[FIELD_NUM_DETECTIONS]
-      detection_classes = predictions[FIELD_DETECTION_CLASSES]
+    # # Detection label prediction, the 0-th position is the full image.
+    # if options.use_detection_loss:
+    #   num_detections = predictions[FIELD_NUM_DETECTIONS]
+    #   detection_classes = predictions[FIELD_DETECTION_CLASSES]
 
-      detection_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          labels=detection_classes,
-          logits=predictions[FIELD_DETECTION_PREDICTION])
-      detection_masks = tf.sequence_mask(num_detections,
-                                         maxlen=tf.shape(detection_classes)[1],
-                                         dtype=tf.float32)
-      detection_losses = masked_ops.masked_avg(data=detection_losses[:, 1:],
-                                               mask=detection_masks[:, 1:],
-                                               dim=1)
-      loss_dict.update({'detection_loss': tf.reduce_mean(detection_losses)})
+    #   detection_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    #       labels=detection_classes,
+    #       logits=predictions[FIELD_DETECTION_PREDICTION])
+    #   detection_masks = tf.sequence_mask(num_detections,
+    #                                      maxlen=tf.shape(detection_classes)[1],
+    #                                      dtype=tf.float32)
+    #   detection_losses = masked_ops.masked_avg(data=detection_losses[:, 1:],
+    #                                            mask=detection_masks[:, 1:],
+    #                                            dim=1)
+    #   loss_dict.update({'detection_loss': tf.reduce_mean(detection_losses)})
 
     return loss_dict
 
@@ -466,24 +467,24 @@ class VBertFt(ModelBase):
     accuracy_metric.update_state(y_true, y_pred)
     metric_dict = {'metrics/accuracy': accuracy_metric}
 
-    # Detection prediction.
-    if options.use_detection_loss:
-      num_detections = predictions[FIELD_NUM_DETECTIONS]
-      detection_classes = predictions[FIELD_DETECTION_CLASSES]
+    # # Detection prediction.
+    # if options.use_detection_loss:
+    #   num_detections = predictions[FIELD_NUM_DETECTIONS]
+    #   detection_classes = predictions[FIELD_DETECTION_CLASSES]
 
-      detection_predictions = tf.argmax(predictions[FIELD_DETECTION_PREDICTION],
-                                        axis=-1)
-      detection_masks = tf.sequence_mask(num_detections,
-                                         maxlen=tf.shape(detection_classes)[1],
-                                         dtype=tf.float32)
+    #   detection_predictions = tf.argmax(predictions[FIELD_DETECTION_PREDICTION],
+    #                                     axis=-1)
+    #   detection_masks = tf.sequence_mask(num_detections,
+    #                                      maxlen=tf.shape(detection_classes)[1],
+    #                                      dtype=tf.float32)
 
-      detection_classes = tf.boolean_mask(detection_classes[:, 1:],
-                                          detection_masks[:, 1:])
-      detection_predictions = tf.boolean_mask(detection_predictions[:, 1:],
-                                              detection_masks[:, 1:])
-      accuracy_metric = tf.keras.metrics.Accuracy()
-      accuracy_metric.update_state(detection_classes, detection_predictions)
-      metric_dict.update({'metrics/detection_accuracy': accuracy_metric})
+    #   detection_classes = tf.boolean_mask(detection_classes[:, 1:],
+    #                                       detection_masks[:, 1:])
+    #   detection_predictions = tf.boolean_mask(detection_predictions[:, 1:],
+    #                                           detection_masks[:, 1:])
+    #   accuracy_metric = tf.keras.metrics.Accuracy()
+    #   accuracy_metric.update_state(detection_classes, detection_predictions)
+    #   metric_dict.update({'metrics/detection_accuracy': accuracy_metric})
     return metric_dict
 
   def get_variables_to_train(self):
