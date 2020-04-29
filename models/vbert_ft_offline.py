@@ -206,20 +206,20 @@ class VBertFtOffline(ModelBase):
     max_caption_len = tf.shape(caption_ids)[1]
     max_detections = tf.shape(detection_features)[1]
 
-    # Create input masks.
-    mask_one = tf.fill([batch_size, 1], True)
-    input_masks = tf.concat([
-        mask_one,
-        tf.sequence_mask(num_detections, maxlen=max_detections), mask_one,
-        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_one
-    ], -1)
-
     # Create input ids.
     id_cls = tf.fill([batch_size, 1], CLS_ID)
     id_sep = tf.fill([batch_size, 1], SEP_ID)
 
     input_ids = tf.concat(
         [id_cls, detection_classes, id_sep, caption_ids, id_sep], axis=-1)
+
+    # Create input masks.
+    mask_true = tf.fill([batch_size, 1], True)
+    input_masks = tf.concat([
+        mask_true,
+        tf.sequence_mask(num_detections, maxlen=max_detections), mask_true,
+        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_true
+    ], -1)
 
     # Create input features.
     zeros = tf.fill([batch_size, 1, detection_features.shape[-1]], 0.0)
@@ -248,7 +248,7 @@ class VBertFtOffline(ModelBase):
       caption_length: A [batch] int tensor.
 
     Returns:
-      matching_score: A [batch] float tensor.
+      bert_feature: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
     """
     (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
         num_detections, detection_boxes, detection_classes, detection_scores,
@@ -382,7 +382,6 @@ class VBertFtOffline(ModelBase):
     loss_fn = (tf.nn.sigmoid_cross_entropy_with_logits
                if options.use_sigmoid_loss else
                tf.nn.softmax_cross_entropy_with_logits)
-
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
     losses = loss_fn(labels=labels, logits=predictions[FIELD_ANSWER_PREDICTION])
 
