@@ -13,17 +13,19 @@ from modeling.models import fast_rcnn
 from modeling.utils import hyperparams
 from modeling.utils import visualization
 from modeling.utils import checkpoints
+from modeling.utils import masked_ops
 from models.model_base import ModelBase
 
 from readers.vcr_fields import InputFields
 from readers.vcr_fields import NUM_CHOICES
 
-from bert2.modeling import BertConfig
-from bert2.modeling import BertModel
-
+import bert_vcr.modeling as bert_modeling
 import tf_slim as slim
 
 FIELD_ANSWER_PREDICTION = 'answer_prediction'
+FIELD_NUM_DETECTIONS = 'num_detections'
+FIELD_DETECTION_CLASSES = 'detection_classes'
+FIELD_DETECTION_PREDICTION = 'detection_prediction'
 
 # UNK = '[UNK]'
 # CLS = '[CLS]'
@@ -112,18 +114,19 @@ def ground_detection_features(detection_features, tags):
   return tf.stack(tag_features, axis=1)
 
 
-class VBertFtOffline(ModelBase):
+class VBertFt(ModelBase):
   """Finetune the VBert model to solve the VCR task."""
 
   def __init__(self, model_proto, is_training):
-    super(VBertFtOffline, self).__init__(model_proto, is_training)
+    super(VBertFt, self).__init__(model_proto, is_training)
 
-    if not isinstance(model_proto, model_pb2.VBertFtOffline):
-      raise ValueError('Options has to be an VBertFtOffline proto.')
+    if not isinstance(model_proto, model_pb2.VBertFt):
+      raise ValueError('Options has to be an VBertFt proto.')
 
     options = model_proto
 
-    self._bert_config = BertConfig.from_json_file(options.bert_config_file)
+    self._bert_config = bert_modeling.BertConfig.from_json_file(
+        options.bert_config_file)
 
     self._slim_fc_scope = hyperparams.build_hyperparams(options.fc_hyperparams,
                                                         is_training)()
@@ -198,21 +201,18 @@ class VBertFtOffline(ModelBase):
       caption_length: A [batch] int tensor.
 
     Returns:
-      input_ids: A [batch, 1 + max_detections + 1 + max_caption_len + 1] int tensor.
-      input_masks: A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
-      input_features: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
+      input_ids: Token ids.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] int tensor.
+      input_masks: Sequence masks.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
+      input_tag_masks: Denoting whether to replace the word embedding.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
+      input_tag_features: Features to replace word embedding.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
     """
     batch_size = num_detections.shape[0]
     max_caption_len = tf.shape(caption_ids)[1]
     max_detections = tf.shape(detection_features)[1]
-
-    # Create input masks.
-    mask_one = tf.fill([batch_size, 1], True)
-    input_masks = tf.concat([
-        mask_one,
-        tf.sequence_mask(num_detections, maxlen=max_detections), mask_one,
-        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_one
-    ], -1)
 
     # Create input ids.
     id_cls = tf.fill([batch_size, 1], CLS_ID)
@@ -221,16 +221,33 @@ class VBertFtOffline(ModelBase):
     input_ids = tf.concat(
         [id_cls, detection_classes, id_sep, caption_ids, id_sep], axis=-1)
 
-    # Create input features.
+    # Create input masks.
+    mask_true = tf.fill([batch_size, 1], True)
+    input_masks = tf.concat([
+        mask_true,
+        tf.sequence_mask(num_detections, maxlen=max_detections), mask_true,
+        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_true
+    ], -1)
+
+    # Create input tag masks, to denote if the token is actually a tag.
+    #   Detection class labels are replaced with FRCNN features.
+    mask_false = tf.fill([batch_size, 1], False)
+    input_tag_masks = tf.concat([
+        mask_false,
+        tf.sequence_mask(num_detections, maxlen=max_detections), mask_false,
+        tf.greater(caption_tag_ids, -1), mask_false
+    ], -1)
+
+    # Create input tag features, to replace BERT word embedding if specified.
     zeros = tf.fill([batch_size, 1, detection_features.shape[-1]], 0.0)
-    input_features = tf.concat([
+    input_tag_features = tf.concat([
         zeros,
         detection_features,
         zeros,
         caption_tag_features,
         zeros,
     ], 1)
-    return input_ids, input_masks, input_features
+    return input_ids, input_masks, input_tag_masks, input_tag_features
 
   def image_text_matching(self, num_detections, detection_boxes,
                           detection_classes, detection_scores,
@@ -248,19 +265,55 @@ class VBertFtOffline(ModelBase):
       caption_length: A [batch] int tensor.
 
     Returns:
-      matching_score: A [batch] float tensor.
+      bert_feature: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
+      embedding_table: A [vocab_size, dims] float tensor.
     """
-    (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
-        num_detections, detection_boxes, detection_classes, detection_scores,
-        detection_features, caption_ids, caption_tag_ids, caption_tag_features,
-        caption_length)
-    bert_model = BertModel(self._bert_config,
-                           self._is_training,
-                           input_ids=input_ids,
-                           input_mask=input_masks,
-                           input_features=input_features,
-                           scope='bert')
-    return bert_model.get_pooled_output()
+    (input_ids, input_masks, input_tag_masks,
+     input_tag_features) = self.create_bert_input_tensors(
+         num_detections, detection_boxes, detection_classes, detection_scores,
+         detection_features, caption_ids, caption_tag_ids, caption_tag_features,
+         caption_length)
+    bert_model = bert_modeling.BertModel(self._bert_config,
+                                         self._is_training,
+                                         input_ids=input_ids,
+                                         input_mask=input_masks,
+                                         input_tag_mask=input_tag_masks,
+                                         input_tag_feature=input_tag_features,
+                                         scope='bert')
+    return bert_model.get_pooled_output(), bert_model.get_embedding_table()
+
+  def decode_bert_output(self, input_tensor, output_weights):
+    """Decodes bert output.
+
+    Args:
+      input_tensor: A [batch, hidden_size] float tensor.
+      output_weights: A [vocab_size, hidden_size] float tensor, the embedding matrix.
+
+    Returns:
+      logits: A [batch, vocab_size] float tensor.
+    """
+    bert_config = self._bert_config
+
+    with tf.variable_scope("cls/predictions"):
+      # We apply one more non-linear transformation before the output layer.
+      # This matrix is not used after pre-training.
+      with tf.variable_scope("transform"):
+        input_tensor = tf.layers.dense(
+            input_tensor,
+            units=bert_config.hidden_size,
+            activation=bert_modeling.get_activation(bert_config.hidden_act),
+            kernel_initializer=bert_modeling.create_initializer(
+                bert_config.initializer_range))
+        input_tensor = bert_modeling.layer_norm(input_tensor)
+
+      # The output weights are the same as the input embeddings, but there is
+      # an output-only bias for each token.
+      output_bias = tf.get_variable("output_bias",
+                                    shape=[bert_config.vocab_size],
+                                    initializer=tf.zeros_initializer())
+      logits = tf.matmul(input_tensor, output_weights, transpose_b=True)
+      logits = tf.nn.bias_add(logits, output_bias)
+    return logits
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -319,25 +372,20 @@ class VBertFtOffline(ModelBase):
         choice_ids_list, choice_tag_ids_list, choice_tag_features_list,
         choice_lengths_list):
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
-        feature_to_predict_choices.append(
-            self.image_text_matching(num_detections, detection_boxes,
-                                     detection_classes, detection_scores,
-                                     detection_features, caption_ids,
-                                     caption_tag_ids, caption_tag_features,
-                                     caption_length))
+        bert_output, embedding_table = self.image_text_matching(
+            num_detections, detection_boxes, detection_classes,
+            detection_scores, detection_features, caption_ids, caption_tag_ids,
+            caption_tag_features, caption_length)
+        feature_to_predict_choices.append(bert_output)
       reuse = True
 
+    # Predict the detection labels.
+    detection_predictions = self.decode_bert_output(detection_features,
+                                                    embedding_table)
+
+    # Predicting the answer logits.
     with slim.arg_scope(self._slim_fc_scope):
       features = tf.stack(feature_to_predict_choices, 1)
-      if options.vcr_adaptation == model_pb2.MLP:
-        features = slim.fully_connected(
-            features,
-            num_outputs=options.vcr_mlp_hidden_units,
-            activation_fn=tf.nn.relu,
-            scope='itm/hidden')
-        features = slim.dropout(features,
-                                keep_prob=options.dropout_keep_prob,
-                                is_training=is_training)
       logits = slim.fully_connected(features,
                                     num_outputs=1,
                                     activation_fn=None,
@@ -361,11 +409,9 @@ class VBertFtOffline(ModelBase):
 
     return {
         FIELD_ANSWER_PREDICTION: logits,
-        #'choice_tags': choice_tags[0],
-        #'choice_ids': choice_ids[0],
-        #'detection_classes': detection_classes,
-        #'detection_features': detection_features,
-        #'choice_features': choice_features,
+        FIELD_NUM_DETECTIONS: num_detections,
+        FIELD_DETECTION_CLASSES: detection_classes,
+        FIELD_DETECTION_PREDICTION: detection_predictions,
     }
 
   def build_losses(self, inputs, predictions, **kwargs):
@@ -379,14 +425,33 @@ class VBertFtOffline(ModelBase):
       loss_dict: A dictionary of loss tensors keyed by names.
     """
     options = self._model_proto
+
+    # Primary loss, predict the answer.
     loss_fn = (tf.nn.sigmoid_cross_entropy_with_logits
                if options.use_sigmoid_loss else
                tf.nn.softmax_cross_entropy_with_logits)
-
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
     losses = loss_fn(labels=labels, logits=predictions[FIELD_ANSWER_PREDICTION])
 
-    return {'crossentropy': tf.reduce_mean(losses)}
+    loss_dict = {'crossentropy': tf.reduce_mean(losses)}
+
+    # Detection label prediction, the 0-th position is the full image.
+    if options.use_detection_loss:
+      num_detections = predictions[FIELD_NUM_DETECTIONS]
+      detection_classes = predictions[FIELD_DETECTION_CLASSES]
+
+      detection_losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          labels=detection_classes,
+          logits=predictions[FIELD_DETECTION_PREDICTION])
+      detection_masks = tf.sequence_mask(num_detections,
+                                         maxlen=tf.shape(detection_classes)[1],
+                                         dtype=tf.float32)
+      detection_losses = masked_ops.masked_avg(data=detection_losses[:, 1:],
+                                               mask=detection_masks[:, 1:],
+                                               dim=1)
+      loss_dict.update({'detection_loss': tf.reduce_mean(detection_losses)})
+
+    return loss_dict
 
   def build_metrics(self, inputs, predictions, **kwargs):
     """Compute evaluation metrics.
@@ -400,12 +465,35 @@ class VBertFtOffline(ModelBase):
         results of calling a metric function, namely a (metric_tensor, 
         update_op) tuple. see tf.metrics for details.
     """
+    options = self._model_proto
+
+    # Primary metric.
     accuracy_metric = tf.keras.metrics.Accuracy()
     y_true = inputs[self._field_label]
     y_pred = tf.argmax(predictions[FIELD_ANSWER_PREDICTION], -1)
 
     accuracy_metric.update_state(y_true, y_pred)
-    return {'metrics/accuracy': accuracy_metric}
+    metric_dict = {'metrics/accuracy': accuracy_metric}
+
+    # Detection prediction.
+    if options.use_detection_loss:
+      num_detections = predictions[FIELD_NUM_DETECTIONS]
+      detection_classes = predictions[FIELD_DETECTION_CLASSES]
+
+      detection_predictions = tf.argmax(predictions[FIELD_DETECTION_PREDICTION],
+                                        axis=-1)
+      detection_masks = tf.sequence_mask(num_detections,
+                                         maxlen=tf.shape(detection_classes)[1],
+                                         dtype=tf.float32)
+
+      detection_classes = tf.boolean_mask(detection_classes[:, 1:],
+                                          detection_masks[:, 1:])
+      detection_predictions = tf.boolean_mask(detection_predictions[:, 1:],
+                                              detection_masks[:, 1:])
+      accuracy_metric = tf.keras.metrics.Accuracy()
+      accuracy_metric.update_state(detection_classes, detection_predictions)
+      metric_dict.update({'metrics/detection_accuracy': accuracy_metric})
+    return metric_dict
 
   def get_variables_to_train(self):
     """Returns model variables.

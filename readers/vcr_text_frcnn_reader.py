@@ -45,7 +45,7 @@ def _update_decoded_example(decoded_example, options):
     decoded_example: The same instance with content modified.
   """
   token_to_id_func = token_to_id.TokenToIdLayer(
-      'data/bert/tf1.x/BERT-Base/vocab.txt', 100)
+      options.vocab_file, options.out_of_vocabulary_token_id)
 
   # Number of objects.
   detection_boxes = decoded_example[InputFields.detection_boxes]

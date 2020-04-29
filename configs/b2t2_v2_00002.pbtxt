@@ -24,7 +24,7 @@ eval_reader {
   }
 }
 model {
-  [VBertFtOffline.ext] {
+  [VBertFt.ext] {
     rationale_model: false
     use_sigmoid_loss: true
     bert_config_file: "data/bert/tf1.x/BERT-Base/bert_config.json"
@@ -35,6 +35,7 @@ model {
     detection_mlp_hidden_units: 256
     dropout_keep_prob: 0.5
     max_num_detections: 10
+    use_detection_loss: true
     fc_hyperparams {
       op: FC
       activation: RELU

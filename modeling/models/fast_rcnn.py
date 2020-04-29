@@ -105,9 +105,8 @@ def FastRCNN(inputs, proposals, options, is_training=True):
           var_name = var_name.replace(
               'SecondStageFeatureExtractor/InceptionResnetV2/Repeat',
               'SecondStageFeatureExtractor/InceptionResnetV2/Repeat_2')
-        var_list[var_name.split('/', 1)[1]] = var
+      var_list[var_name.split('/', 1)[1]] = var
     saver = tf.compat.v1.train.Saver(var_list)
-
     def _init_from_classification_ckpt_fn(_, sess):
       saver.restore(sess, options.checkpoint_path)
 

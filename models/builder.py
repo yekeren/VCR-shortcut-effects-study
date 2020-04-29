@@ -5,10 +5,12 @@ from __future__ import print_function
 from protos import model_pb2
 from models.vbert_offline import VBertOffline
 from models.vbert_ft_offline import VBertFtOffline
+from models.vbert_ft import VBertFt
 
 MODELS = {
     model_pb2.VBertOffline.ext: VBertOffline,
     model_pb2.VBertFtOffline.ext: VBertFtOffline,
+    model_pb2.VBertFt.ext: VBertFt,
 }
 
 
