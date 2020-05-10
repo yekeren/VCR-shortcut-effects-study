@@ -22,6 +22,9 @@ flags.DEFINE_string('pipeline_proto', None, 'Path to the pipeline proto file.')
 flags.DEFINE_boolean('use_mirrored_strategy', False,
                      'If true, use mirrored strategy for training.')
 
+flags.DEFINE_enum('job', 'train_and_evaluate',
+                  ['train_and_evaluate', 'train', 'evaluate'], 'Job type.')
+
 FLAGS = flags.FLAGS
 
 
@@ -50,10 +53,18 @@ def main(_):
                    overwrite=True)
 
   pipeline_proto = _load_pipeline_proto(FLAGS.pipeline_proto)
-  trainer.train_and_evaluate(pipeline_proto=pipeline_proto,
-                             model_dir=FLAGS.model_dir,
-                             use_mirrored_strategy=FLAGS.use_mirrored_strategy)
 
+  if FLAGS.job == 'train_and_evaluate':
+    trainer.train_and_evaluate(
+        pipeline_proto=pipeline_proto,
+        model_dir=FLAGS.model_dir,
+        use_mirrored_strategy=FLAGS.use_mirrored_strategy)
+  elif FLAGS.job == 'train':
+    trainer.train(pipeline_proto=pipeline_proto,
+                  model_dir=FLAGS.model_dir,
+                  use_mirrored_strategy=FLAGS.use_mirrored_strategy)
+  else:
+    raise ValueError('Invalid job type %s!' % FLAGS.job)
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('model_dir')

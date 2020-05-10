@@ -28,6 +28,9 @@ flags.DEFINE_boolean('do_lower_case', False,
 flags.DEFINE_string('annotations_jsonl_file', 'data/vcr1annots/val.jsonl',
                     'Path to the annotations file in jsonl format.')
 
+flags.DEFINE_string('annotations_jsonl_file_aug', 'data/vcr1annots/val.jsonl',
+                    'Path to the annotations file in jsonl format.')
+
 flags.DEFINE_integer('num_shards', 10,
                      'Number of shards of the output tfrecord files.')
 
@@ -143,7 +146,7 @@ def get_detections_to_use(obj_to_type, tokens_mixed_with_tags):
 
 
 def _create_tf_example(encoded_jpeg, annot, meta, bert_tokenizer, do_lower_case,
-                       only_use_relevant_dets, desired_size=400):
+                       only_use_relevant_dets):
   """Creates an example from the annotation.
 
   Args:
@@ -226,20 +229,6 @@ def _create_tf_example(encoded_jpeg, annot, meta, bert_tokenizer, do_lower_case,
   feature['image/object/bbox/score'] = _float_feature_list(score.tolist())
   feature['image/object/bbox/label'] = _bytes_feature_list(obj_to_type.tolist())
 
-  # Encode jpeg data, resize image if specified.
-  image = PIL.Image.open(io.BytesIO(encoded_jpeg))
-  assert image.format == 'JPEG'
-
-  min_size = min(image.width, image.height)
-  scale = 1.0 * desired_size / min_size
-  if scale < 1.0:
-    new_height, new_width = (int(image.height * scale),
-                             int(image.width * scale))
-    image = image.resize((new_width, new_height))
-  with io.BytesIO() as f:
-    image.save(f, format="JPEG")
-    encoded_jpeg = f.getvalue()
-
   feature['image/format'] = _bytes_feature('jpeg')
   feature['image/encoded'] = tf.train.Feature(bytes_list=tf.train.BytesList(
       value=[encoded_jpeg]))
@@ -272,6 +261,24 @@ def _create_tf_example(encoded_jpeg, annot, meta, bert_tokenizer, do_lower_case,
   return tf_example
 
 
+def resize_jpeg(encoded_jpeg, desired_size=400):
+  # Encode jpeg data, resize image if specified.
+  image = PIL.Image.open(io.BytesIO(encoded_jpeg))
+  assert image.format == 'JPEG'
+
+  min_size = min(image.width, image.height)
+  scale = 1.0 * desired_size / min_size
+  if scale < 1.0:
+    new_height, new_width = (int(image.height * scale),
+                             int(image.width * scale))
+    image = image.resize((new_width, new_height))
+  with io.BytesIO() as f:
+    image.save(f, format="JPEG")
+    encoded_jpeg = f.getvalue()
+
+  return encoded_jpeg
+
+
 def main(_):
   logging.set_verbosity(logging.INFO)
 
@@ -281,6 +288,7 @@ def main(_):
 
   # Load annotations.
   annots = _load_annotations(FLAGS.annotations_jsonl_file)
+  annots_aug = _load_annotations(FLAGS.annotations_jsonl_file_aug)
   logging.info('Loaded %i annotations.', len(annots))
 
   shard_id, num_shards = FLAGS.shard_id, FLAGS.num_shards
@@ -290,7 +298,7 @@ def main(_):
                                 (shard_id, num_shards))
 
   with zipfile.ZipFile(FLAGS.image_zip_file) as image_zip:
-    for idx, annot in enumerate(annots):
+    for idx, (annot, annot_aug) in enumerate(zip(annots, annots_aug)):
       if (idx + 1) % 1000 == 0:
         logging.info('On example %i/%i.', idx + 1, len(annots))
 
@@ -315,11 +323,16 @@ def main(_):
       except Exception as ex:
         logging.warn('Skip %s.', img_fn)
         continue
+
       # Create TF example.
-      tf_example = _create_tf_example(encoded_jpeg, annot, meta, bert_tokenizer,
-                                      FLAGS.do_lower_case,
-                                      FLAGS.only_use_relevant_dets)
-      writer.write(tf_example.SerializeToString())
+      encoded_jpeg = resize_jpeg(encoded_jpeg)
+      assert annot['annot_id'] == annot_aug['annot_id']
+
+      for annot_oneof in [annot, annot_aug]:
+        tf_example = _create_tf_example(encoded_jpeg, annot_oneof, meta,
+                                        bert_tokenizer, FLAGS.do_lower_case,
+                                        FLAGS.only_use_relevant_dets)
+        writer.write(tf_example.SerializeToString())
 
   writer.close()
 

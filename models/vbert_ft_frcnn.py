@@ -13,29 +13,30 @@ from modeling.models import fast_rcnn
 from modeling.utils import hyperparams
 from modeling.utils import visualization
 from modeling.utils import checkpoints
+from modeling.utils import masked_ops
 from models.model_base import ModelBase
 
 from readers.vcr_fields import InputFields
 from readers.vcr_fields import NUM_CHOICES
 
-from bert2.modeling import BertConfig
-from bert2.modeling import BertModel
-
+import bert_vcr.modeling as bert_modeling
 import tf_slim as slim
 
 FIELD_ANSWER_PREDICTION = 'answer_prediction'
+FIELD_NUM_DETECTIONS = 'num_detections'
+FIELD_DETECTION_CLASSES = 'detection_classes'
+FIELD_DETECTION_PREDICTION = 'detection_prediction'
 
 # UNK = '[UNK]'
 # CLS = '[CLS]'
 # SEP = '[SEP]'
 # MASK = '[MASK]'
-#
 # IMG = '[unused400]'
+
 UNK_ID = 100
 CLS_ID = 101
 SEP_ID = 102
 MASK_ID = 103
-
 IMG_ID = 405
 
 
@@ -43,7 +44,6 @@ def remove_detections(num_detections,
                       detection_boxes,
                       detection_classes,
                       detection_scores,
-                      detection_features,
                       max_num_detections=10):
   """Trims to the `max_num_detections` objects.
 
@@ -52,7 +52,6 @@ def remove_detections(num_detections,
     detection_boxes: A [batch, pad_num_detections, 4] float tensor.
     detection_classes: A [batch, pad_num_detections] int tensor.
     detection_scores: A [batch, pad_num_detections] float tensor.
-    detection_features: A [batch, pad_num_detections, dims] float tensor.
     max_num_detections: Expected maximum number of detections.
 
   Returns:
@@ -61,7 +60,6 @@ def remove_detections(num_detections,
     detection_boxes: A [batch, max_num_detections, 4] float tensor.
     detection_classes: A [batch, max_num_detections] int tensor.
     detection_scores: A [batch, max_num_detections] float tensor.
-    detection_features: A [batch, max_num_detections, dims] int tensor.
   """
   max_num_detections = tf.minimum(tf.reduce_max(num_detections),
                                   max_num_detections)
@@ -70,9 +68,24 @@ def remove_detections(num_detections,
   detection_boxes = detection_boxes[:, :max_num_detections, :]
   detection_classes = detection_classes[:, :max_num_detections]
   detection_scores = detection_scores[:, :max_num_detections]
-  detection_features = detection_features[:, :max_num_detections, :]
   return (max_num_detections, num_detections, detection_boxes,
-          detection_classes, detection_scores, detection_features)
+          detection_classes, detection_scores)
+
+
+def convert_to_batch_coordinates(detection_boxes, height, width, batch_height,
+                                 batch_width):
+  """Converts the coordinates to be relative to the batch images. """
+  height = tf.expand_dims(tf.cast(height, tf.float32), -1)
+  width = tf.expand_dims(tf.cast(width, tf.float32), -1)
+  batch_height = tf.cast(batch_height, tf.float32)
+  batch_width = tf.cast(batch_width, tf.float32)
+
+  ymin, xmin, ymax, xmax = tf.unstack(detection_boxes, axis=-1)
+  detection_boxes_converted = tf.stack([
+      ymin * height / batch_height, xmin * width / batch_width,
+      ymax * height / batch_height, xmax * width / batch_width
+  ], -1)
+  return detection_boxes_converted
 
 
 def preprocess_tags(tags, max_num_detections):
@@ -112,18 +125,19 @@ def ground_detection_features(detection_features, tags):
   return tf.stack(tag_features, axis=1)
 
 
-class VBertFtOffline(ModelBase):
+class VBertFtFrcnn(ModelBase):
   """Finetune the VBert model to solve the VCR task."""
 
   def __init__(self, model_proto, is_training):
-    super(VBertFtOffline, self).__init__(model_proto, is_training)
+    super(VBertFtFrcnn, self).__init__(model_proto, is_training)
 
-    if not isinstance(model_proto, model_pb2.VBertFtOffline):
-      raise ValueError('Options has to be an VBertFtOffline proto.')
+    if not isinstance(model_proto, model_pb2.VBertFtFrcnn):
+      raise ValueError('Options has to be an VBertFtFrcnn proto.')
 
     options = model_proto
 
-    self._bert_config = BertConfig.from_json_file(options.bert_config_file)
+    self._bert_config = bert_modeling.BertConfig.from_json_file(
+        options.bert_config_file)
 
     self._slim_fc_scope = hyperparams.build_hyperparams(options.fc_hyperparams,
                                                         is_training)()
@@ -198,21 +212,18 @@ class VBertFtOffline(ModelBase):
       caption_length: A [batch] int tensor.
 
     Returns:
-      input_ids: A [batch, 1 + max_detections + 1 + max_caption_len + 1] int tensor.
-      input_masks: A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
-      input_features: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
+      input_ids: Token ids.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] int tensor.
+      input_masks: Sequence masks.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
+      input_tag_masks: Denoting whether to replace the word embedding.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1] boolean tensor.
+      input_tag_features: Features to replace word embedding.
+        A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
     """
     batch_size = num_detections.shape[0]
     max_caption_len = tf.shape(caption_ids)[1]
     max_detections = tf.shape(detection_features)[1]
-
-    # Create input masks.
-    mask_one = tf.fill([batch_size, 1], True)
-    input_masks = tf.concat([
-        mask_one,
-        tf.sequence_mask(num_detections, maxlen=max_detections), mask_one,
-        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_one
-    ], -1)
 
     # Create input ids.
     id_cls = tf.fill([batch_size, 1], CLS_ID)
@@ -221,16 +232,33 @@ class VBertFtOffline(ModelBase):
     input_ids = tf.concat(
         [id_cls, detection_classes, id_sep, caption_ids, id_sep], axis=-1)
 
-    # Create input features.
+    # Create input masks.
+    mask_true = tf.fill([batch_size, 1], True)
+    input_masks = tf.concat([
+        mask_true,
+        tf.sequence_mask(num_detections, maxlen=max_detections), mask_true,
+        tf.sequence_mask(caption_len, maxlen=max_caption_len), mask_true
+    ], -1)
+
+    # Create input tag masks, to denote if the token is actually a tag.
+    #   Detection class labels are replaced with FRCNN features.
+    mask_false = tf.fill([batch_size, 1], False)
+    input_tag_masks = tf.concat([
+        mask_false,
+        tf.sequence_mask(num_detections, maxlen=max_detections), mask_false,
+        tf.greater(caption_tag_ids, -1), mask_false
+    ], -1)
+
+    # Create input tag features, to replace BERT word embedding if specified.
     zeros = tf.fill([batch_size, 1, detection_features.shape[-1]], 0.0)
-    input_features = tf.concat([
+    input_tag_features = tf.concat([
         zeros,
         detection_features,
         zeros,
         caption_tag_features,
         zeros,
     ], 1)
-    return input_ids, input_masks, input_features
+    return input_ids, input_masks, input_tag_masks, input_tag_features
 
   def image_text_matching(self, num_detections, detection_boxes,
                           detection_classes, detection_scores,
@@ -248,19 +276,22 @@ class VBertFtOffline(ModelBase):
       caption_length: A [batch] int tensor.
 
     Returns:
-      matching_score: A [batch] float tensor.
+      bert_feature: A [batch, 1 + max_detections + 1 + max_caption_len + 1, dims] float tensor.
+      embedding_table: A [vocab_size, dims] float tensor.
     """
-    (input_ids, input_masks, input_features) = self.create_bert_input_tensors(
-        num_detections, detection_boxes, detection_classes, detection_scores,
-        detection_features, caption_ids, caption_tag_ids, caption_tag_features,
-        caption_length)
-    bert_model = BertModel(self._bert_config,
-                           self._is_training,
-                           input_ids=input_ids,
-                           input_mask=input_masks,
-                           input_features=input_features,
-                           scope='bert')
-    return bert_model.get_pooled_output()
+    (input_ids, input_masks, input_tag_masks,
+     input_tag_features) = self.create_bert_input_tensors(
+         num_detections, detection_boxes, detection_classes, detection_scores,
+         detection_features, caption_ids, caption_tag_ids, caption_tag_features,
+         caption_length)
+    bert_model = bert_modeling.BertModel(self._bert_config,
+                                         self._is_training,
+                                         input_ids=input_ids,
+                                         input_mask=input_masks,
+                                         input_tag_mask=input_tag_masks,
+                                         input_tag_feature=input_tag_features,
+                                         scope='bert')
+    return bert_model.get_pooled_output(), bert_model.get_embedding_table()
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -271,31 +302,49 @@ class VBertFtOffline(ModelBase):
     Returns:
       predictions: A dictionary of prediction tensors keyed by name.
     """
+    predictions = {}
+
     is_training = self._is_training
     options = self._model_proto
 
     # Decode image fields from `inputs`.
-    (num_detections, detection_boxes, detection_classes, detection_scores,
-     detection_features) = (
+    (image, image_height, image_width, num_detections, detection_boxes,
+     detection_classes, detection_scores) = (
+         inputs[InputFields.img_data],
+         inputs[InputFields.img_height],
+         inputs[InputFields.img_width],
          inputs[InputFields.num_detections],
          inputs[InputFields.detection_boxes],
          inputs[InputFields.detection_classes],
          inputs[InputFields.detection_scores],
-         inputs[InputFields.detection_features],
      )
+    batch_size = image.shape[0]
     (max_num_detections, num_detections, detection_boxes, detection_classes,
-     detection_scores, detection_features) = remove_detections(
+     detection_scores) = remove_detections(
          num_detections,
          detection_boxes,
          detection_classes,
          detection_scores,
-         detection_features,
          max_num_detections=options.max_num_detections)
-    batch_size = num_detections.shape[0]
 
-    # Project Fast-RCNN features.
+    # Extract Fast-RCNN features.
+    image_batch_shape = tf.shape(image)
+    detection_boxes = convert_to_batch_coordinates(detection_boxes,
+                                                   image_height, image_width,
+                                                   image_batch_shape[1],
+                                                   image_batch_shape[2])
+    detection_features, _ = fast_rcnn.FastRCNN(image,
+                                               detection_boxes,
+                                               options=options.fast_rcnn_config,
+                                               is_training=is_training)
+    predictions.update({'detection_features': detection_features})
     with slim.arg_scope(self._slim_fc_scope):
       detection_features = self.project_detection_features(detection_features)
+
+    # image_vis = visualization.draw_bounding_boxes_on_image_tensors(
+    #     image, num_detections, detection_boxes, detection_classes,
+    #     detection_scores)
+    # tf.summary.image('detection/vis', image_vis)
 
     # Ground objects.
     (choice_ids, choice_tag_ids,
@@ -319,54 +368,30 @@ class VBertFtOffline(ModelBase):
         choice_ids_list, choice_tag_ids_list, choice_tag_features_list,
         choice_lengths_list):
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
-        feature_to_predict_choices.append(
-            self.image_text_matching(num_detections, detection_boxes,
-                                     detection_classes, detection_scores,
-                                     detection_features, caption_ids,
-                                     caption_tag_ids, caption_tag_features,
-                                     caption_length))
+        bert_output, embedding_table = self.image_text_matching(
+            num_detections, detection_boxes, detection_classes,
+            detection_scores, detection_features, caption_ids, caption_tag_ids,
+            caption_tag_features, caption_length)
+        feature_to_predict_choices.append(bert_output)
       reuse = True
 
+    # Predicting the answer.
     with slim.arg_scope(self._slim_fc_scope):
       features = tf.stack(feature_to_predict_choices, 1)
-      if options.vcr_adaptation == model_pb2.MLP:
-        features = slim.fully_connected(
-            features,
-            num_outputs=options.vcr_mlp_hidden_units,
-            activation_fn=tf.nn.relu,
-            scope='itm/hidden')
-        features = slim.dropout(features,
-                                keep_prob=options.dropout_keep_prob,
-                                is_training=is_training)
       logits = slim.fully_connected(features,
                                     num_outputs=1,
                                     activation_fn=None,
                                     scope='itm/logits')
-      logits = tf.squeeze(logits, -1)
+    predictions.update({FIELD_ANSWER_PREDICTION: tf.squeeze(logits, -1)})
 
     # Restore from BERT checkpoint.
     assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
-        [x for x in tf.global_variables() if x.op.name.startswith('bert')],
+        [x for x in tf.global_variables() if x.op.name.startswith('bert')
+        ],  # IMPORTANT to filter using `bert`.
         options.bert_checkpoint_file)
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
 
-    # Restore from detection-mlp checkpoint.
-    if options.HasField('detection_mlp_checkpoint_file'):
-      assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint([
-          x for x in tf.global_variables()
-          if x.op.name.startswith('detection/project/')
-      ], options.detection_mlp_checkpoint_file)
-      tf.train.init_from_checkpoint(options.detection_mlp_checkpoint_file,
-                                    assignment_map)
-
-    return {
-        FIELD_ANSWER_PREDICTION: logits,
-        #'choice_tags': choice_tags[0],
-        #'choice_ids': choice_ids[0],
-        #'detection_classes': detection_classes,
-        #'detection_features': detection_features,
-        #'choice_features': choice_features,
-    }
+    return predictions
 
   def build_losses(self, inputs, predictions, **kwargs):
     """Computes loss tensors.
@@ -379,10 +404,11 @@ class VBertFtOffline(ModelBase):
       loss_dict: A dictionary of loss tensors keyed by names.
     """
     options = self._model_proto
+
+    # Primary loss, predict the answer.
     loss_fn = (tf.nn.sigmoid_cross_entropy_with_logits
                if options.use_sigmoid_loss else
                tf.nn.softmax_cross_entropy_with_logits)
-
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
     losses = loss_fn(labels=labels, logits=predictions[FIELD_ANSWER_PREDICTION])
 
@@ -400,6 +426,9 @@ class VBertFtOffline(ModelBase):
         results of calling a metric function, namely a (metric_tensor, 
         update_op) tuple. see tf.metrics for details.
     """
+    options = self._model_proto
+
+    # Primary metric.
     accuracy_metric = tf.keras.metrics.Accuracy()
     y_true = inputs[self._field_label]
     y_pred = tf.argmax(predictions[FIELD_ANSWER_PREDICTION], -1)

@@ -53,27 +53,31 @@ def main(_):
     vocab = [x.strip('\n') for x in f]
 
   for example in trainer.predict(pipeline_proto, FLAGS.model_dir):
-    labels = [vocab[x].encode('utf8') for x in example['mlm/answer/labels']]
+    y_true = [vocab[x].encode('utf8') for x in example['masked_lm_token_ids']]
+    y_pred = [
+        vocab[x].encode('utf8')
+        for x in example['masked_lm_token_logits'].argmax(-1)
+    ]
     import pdb
     pdb.set_trace()
     j = 1
-    batch_size = len(example['question'])
-    for i in range(batch_size):
-      print('#' * 128)
-      print(example['question'][i])
-      print(example['answer_label'][i])
-      for j in range(4):
-        sentence = []
-        for token, indicator in zip(example['answer_choices'][i, j],
-                                    example['shortcut_mask'][i, j]):
-          if not indicator:
-            sentence.append(token.decode('utf8') + '[REMOVE]')
-          else:
-            sentence.append(token.decode('utf8'))
-        print(' '.join(sentence))
-        print(example['answer_logits'][i][j].tolist())
-        print(example['a_soft_sample'][i][j].tolist())
-      print()
+    #batch_size = len(example['question'])
+    #for i in range(batch_size):
+    #  print('#' * 128)
+    #  print(example['question'][i])
+    #  print(example['answer_label'][i])
+    #  for j in range(4):
+    #    sentence = []
+    #    for token, indicator in zip(example['answer_choices'][i, j],
+    #                                example['shortcut_mask'][i, j]):
+    #      if not indicator:
+    #        sentence.append(token.decode('utf8') + '[REMOVE]')
+    #      else:
+    #        sentence.append(token.decode('utf8'))
+    #    print(' '.join(sentence))
+    #    print(example['answer_logits'][i][j].tolist())
+    #    print(example['a_soft_sample'][i][j].tolist())
+    #  print()
 
 
 if __name__ == '__main__':

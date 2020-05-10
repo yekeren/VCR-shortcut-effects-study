@@ -20,18 +20,22 @@ class VCRReaderTest(tf.test.TestCase):
   def test_get_input_fn(self):
     options_str = r"""
       vcr_reader {
-        input_pattern: "output/uncased/VCR/val.record-00000-of-00005"
+        input_pattern: "output/uncased/VCR-RAW/val.record-00000-of-00005"
         shuffle_buffer_size: 10
         interleave_cycle_length: 1
         batch_size: 8
         prefetch_buffer_size: 8000
         desired_size: 600
+        vocab_file: "data/bert/tf1.x/BERT-Base/vocab.txt"
+        out_of_vocabulary_token_id: 100
       }
     """
     options = text_format.Merge(options_str, reader_pb2.Reader())
 
     dataset = reader.get_input_fn(options, is_training=False)()
     for elem in dataset.take(1):
+      import pdb
+      pdb.set_trace()
       for key, value in elem.items():
         logging.info('%s: %s', key, value.shape)
       logging.info('Examples:')

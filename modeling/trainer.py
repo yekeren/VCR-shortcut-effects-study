@@ -172,6 +172,44 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 
+def train(pipeline_proto, model_dir, use_mirrored_strategy=False):
+  """Starts the estimator training loop.
+
+  Args:
+    pipeline_proto: An instance of pipeline_pb2.Pipeline.
+    model_dir: Path to the directory saving checkpoint files.
+  """
+  if not isinstance(pipeline_proto, pipeline_pb2.Pipeline):
+    raise ValueError('pipeline_proto has to be an instance of Pipeline.')
+
+  # Create train_spec.
+  train_config = pipeline_proto.train_config
+  train_input_fn = reader.get_input_fn(pipeline_proto.train_reader,
+                                       is_training=True)
+
+  # Create run_config.
+  strategy = None
+  if use_mirrored_strategy:
+    strategy = tf.contrib.distribute.MirroredStrategy()
+
+  run_config = tf.estimator.RunConfig(
+      train_distribute=strategy,
+      session_config=tf.ConfigProto(
+          allow_soft_placement=True,
+          gpu_options=tf.GPUOptions(allow_growth=True)),
+      save_summary_steps=train_config.save_summary_steps,
+      save_checkpoints_steps=train_config.save_checkpoints_steps,
+      keep_checkpoint_max=train_config.keep_checkpoint_max,
+      log_step_count_steps=train_config.log_step_count_steps)
+
+  # Train and evaluate.
+  model_fn = _create_model_fn(pipeline_proto, is_chief=run_config.is_chief)
+  estimator = tf.estimator.Estimator(model_fn=model_fn,
+                                     model_dir=model_dir,
+                                     config=run_config)
+  estimator.train(train_input_fn, max_steps=train_config.max_steps)
+
+
 def predict(pipeline_proto, model_dir=None, yield_single_examples=False):
   """Generates inference results.
 

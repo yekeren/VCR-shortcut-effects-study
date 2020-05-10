@@ -34,6 +34,20 @@ class LearningRateScheduleTest(tf.test.TestCase):
     self.assertIsInstance(
         schedule, tf.keras.optimizers.schedules.ExponentialDecay)
 
+    options_str = r"""
+    polynomial_decay {
+      initial_learning_rate: 0.001
+      decay_steps: 1000
+      end_learning_rate: 0.0001
+      power: 1.0
+      cycle: true
+    }"""
+    options = text_format.Merge(
+        options_str, learning_rate_schedule_pb2.LearningRateSchedule())
+    schedule = learning_rate_schedule.create_learning_rate_schedule(options)
+    self.assertIsInstance(
+        schedule, tf.keras.optimizers.schedules.PolynomialDecay)
+
 
 if __name__ == '__main__':
   tf.test.main()

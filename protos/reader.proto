@@ -27,6 +27,12 @@ message VCRReader {
 
   // Desired size of the mininum of (height, width).
   optional int32 desired_size = 8 [default = 500];
+
+  // Vocabulary file.
+  optional string vocab_file = 11;
+
+  // ID of the OOV tokens.
+  optional int32 out_of_vocabulary_token_id = 12 [default = 100];
 }
 
 message VCRTextFRCNNReader {
@@ -54,7 +60,9 @@ message VCRTextFRCNNReader {
   // Dimensions of the Fast-RCNN feature.
   optional int32 frcnn_feature_dims = 10 [default = 1024];
 
+  // Vocabulary file.
   optional string vocab_file = 11;
 
+  // ID of the OOV tokens.
   optional int32 out_of_vocabulary_token_id = 12 [default = 100];
 }

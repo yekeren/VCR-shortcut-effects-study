@@ -41,4 +41,13 @@ def create_learning_rate_schedule(options):
         decay_rate=options.decay_rate,
         staircase=options.staircase)
 
+  if 'polynomial_decay' == oneof:
+    options = options.polynomial_decay
+    return tf.keras.optimizers.schedules.PolynomialDecay(
+        initial_learning_rate=options.initial_learning_rate,
+        decay_steps=options.decay_steps,
+        end_learning_rate=options.end_learning_rate,
+        power=options.power,
+        cycle=options.cycle)
+
   raise ValueError('Invalid learning_rate_schedule: {}.'.format(oneof))

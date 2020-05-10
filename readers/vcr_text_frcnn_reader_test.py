@@ -20,13 +20,15 @@ class VCRTextImageReaderTest(tf.test.TestCase):
   def test_get_input_fn(self):
     options_str = r"""
       vcr_text_frcnn_reader {
-        input_pattern: "output/uncased/VCR-text_and_frcnn/val.record-*-of-00005"
+        input_pattern: "output/uncased/VCR-RES152-text_and_frcnn/val.record-*-of-00005"
         shuffle_buffer_size: 10
         interleave_cycle_length: 1
         batch_size: 60
         prefetch_buffer_size: 8000
-        frcnn_feature_dims: 1536
+        frcnn_feature_dims: 2048
         num_parallel_calls: 10
+        vocab_file: "data/bert/tf1.x/BERT-Base/vocab.txt"
+        out_of_vocabulary_token_id: 100
       }
     """
     options = text_format.Merge(options_str, reader_pb2.Reader())

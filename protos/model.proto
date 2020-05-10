@@ -13,109 +13,6 @@ message Model {
   extensions 1000 to max;
 }
 
-message VBertOffline{
-  extend Model {
-    optional VBertOffline ext = 1003;
-  }
-
-  // Path to the bert config file.
-  optional string bert_config_file = 1;
-
-  // Path to the bert vocabulary file.
-  optional string bert_vocab_file = 2;
-
-  // Path to the pre-trained bert checkpoint.
-  optional string bert_checkpoint_file = 3;
-
-  // Out-of-Vocabulary token id.
-  optional uint32 bert_unk_token_id = 4 [default = 100];
-
-  // Path to the pre-trained detection mlp checkpoint.
-  optional string detection_mlp_checkpoint_file = 6;
-
-  // Keep probability of all dropout layers.
-  optional float dropout_keep_prob = 12 [default = 1.0];
-
-  // Frozen variable patterns.
-  repeated string frozen_variable_patterns = 14;
-
-  // Hyperparameters of the fully-connected layers.
-  optional Hyperparams fc_hyperparams = 16;
-
-  // Mask probability of the Masked Language Modeling.
-  optional float mask_probability = 21 [default = 0.15];
-
-  // Maximum number of detections.
-  optional uint32 max_num_detections = 23 [default = 999];
-
-  // Maximum caption length.
-  optional uint32 max_caption_len = 24 [default = 999];
-
-  // Method to adapt detection feature.
-  optional AdaptationMethod detection_adaptation = 25 [default = LINEAR];
-
-  optional bool use_image_text_matching_task = 26 [default = true];
-
-  optional bool use_caption_tag_feature = 27 [default = false];
-
-  // Hidden units of the detection mlp.
-  optional uint32 detection_mlp_hidden_units = 28 [default = 768];
-}
-
-
-message VBertFtOffline {
-  extend Model {
-    optional VBertFtOffline ext = 1004;
-  }
-
-  // If true, train rationale prediction model.
-  optional bool rationale_model = 1 [default = false];
-
-  // Path to the bert config file.
-  optional string bert_config_file = 2;
-
-  // Path to the bert vocabulary file.
-  optional string bert_vocab_file = 3;
-
-  // Path to the pre-trained bert checkpoint.
-  optional string bert_checkpoint_file = 4;
-
-  // Out-of-Vocabulary token id.
-  optional uint32 bert_unk_token_id = 5 [default = 100];
-
-  // Path to the pre-trained detection mlp checkpoint.
-  optional string detection_mlp_checkpoint_file = 6;
-
-  // Maximum number of objects to be used in the model.
-  optional uint32 max_num_detections = 7 [default = 10];
-
-  // Hyperparameters of the fully-connected layers.
-  optional Hyperparams fc_hyperparams = 11;
-
-  // Keep probability of all dropout layers.
-  optional float dropout_keep_prob = 12 [default = 1.0];
-
-  // If true, use sigmoid crossentropy loss.
-  optional bool use_sigmoid_loss = 13 [default = false];
-
-  // Frozen variable patterns.
-  repeated string frozen_variable_patterns = 14;
-
-  // If true, use FRCNN features as well as detection labels.
-  optional bool use_detection_class_labels = 21 [default = true];
-
-  // Method to adapt detection feature.
-  optional AdaptationMethod detection_adaptation = 22 [default = MLP];
-
-  // Hidden units of the detection mlp.
-  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
-
-  // Method to adapt VCR feature.
-  optional AdaptationMethod vcr_adaptation = 24 [default = LINEAR];
-
-  // Hidden units of the VCR mlp.
-  optional uint32 vcr_mlp_hidden_units = 25 [default = 768];
-}
 message VBertFt{
   extend Model {
     optional VBertFt ext = 1005;
@@ -171,3 +68,130 @@ message VBertFt{
 
   optional bool use_detection_loss = 26 [default = false];
 }
+
+message VBertFtFrcnn{
+  extend Model {
+    optional VBertFtFrcnn ext = 1006;
+  }
+
+  // If true, train rationale prediction model.
+  optional bool rationale_model = 1 [default = false];
+
+  // Path to the bert config file.
+  optional string bert_config_file = 2;
+
+  // Path to the bert vocabulary file.
+  optional string bert_vocab_file = 3;
+
+  // Path to the pre-trained bert checkpoint.
+  optional string bert_checkpoint_file = 4;
+
+  // Out-of-Vocabulary token id.
+  optional uint32 bert_unk_token_id = 5 [default = 100];
+
+  // Path to the pre-trained detection mlp checkpoint.
+  optional string detection_mlp_checkpoint_file = 6;
+
+  // Maximum number of objects to be used in the model.
+  optional uint32 max_num_detections = 7 [default = 10];
+
+  // Hyperparameters of the fully-connected layers.
+  optional Hyperparams fc_hyperparams = 11;
+
+  // Keep probability of all dropout layers.
+  optional float dropout_keep_prob = 12 [default = 1.0];
+
+  // If true, use sigmoid crossentropy loss.
+  optional bool use_sigmoid_loss = 13 [default = false];
+
+  // Frozen variable patterns.
+  repeated string frozen_variable_patterns = 14;
+
+  // If true, use FRCNN features as well as detection labels.
+  optional bool use_detection_class_labels = 21 [default = true];
+
+  // Method to adapt detection feature.
+  optional AdaptationMethod detection_adaptation = 22 [default = MLP];
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
+
+  // Method to adapt VCR feature.
+  optional AdaptationMethod vcr_adaptation = 24 [default = LINEAR];
+
+  // Hidden units of the VCR mlp.
+  optional uint32 vcr_mlp_hidden_units = 25 [default = 768];
+
+  optional bool use_detection_loss = 26 [default = false];
+
+  // FastRCNN configs.
+  optional FastRCNN fast_rcnn_config = 31;
+}
+
+message VBertFtFrcnnMLM{
+  extend Model {
+    optional VBertFtFrcnnMLM ext = 1016;
+  }
+
+  // If true, train rationale prediction model.
+  optional bool rationale_model = 1 [default = false];
+
+  // Path to the bert config file.
+  optional string bert_config_file = 2;
+
+  // Path to the bert vocabulary file.
+  optional string bert_vocab_file = 3;
+
+  // Path to the pre-trained bert checkpoint.
+  optional string bert_checkpoint_file = 4;
+
+  // Out-of-Vocabulary token id.
+  optional uint32 bert_unk_token_id = 5 [default = 100];
+
+  // Path to the pre-trained detection mlp checkpoint.
+  optional string detection_mlp_checkpoint_file = 6;
+
+  // Maximum number of objects to be used in the model.
+  optional uint32 max_num_detections = 7 [default = 10];
+
+  // Hyperparameters of the fully-connected layers.
+  optional Hyperparams fc_hyperparams = 11;
+
+  // Keep probability of all dropout layers.
+  optional float dropout_keep_prob = 12 [default = 1.0];
+
+  // If true, use sigmoid crossentropy loss.
+  optional bool use_sigmoid_loss = 13 [default = false];
+
+  // Frozen variable patterns.
+  repeated string frozen_variable_patterns = 14;
+
+  // If true, use FRCNN features as well as detection labels.
+  optional bool use_detection_class_labels = 21 [default = true];
+
+  // Method to adapt detection feature.
+  optional AdaptationMethod detection_adaptation = 22 [default = MLP];
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
+
+  // Method to adapt VCR feature.
+  optional AdaptationMethod vcr_adaptation = 24 [default = LINEAR];
+
+  // Hidden units of the VCR mlp.
+  optional uint32 vcr_mlp_hidden_units = 25 [default = 768];
+
+  optional bool use_detection_loss = 26 [default = false];
+
+  // FastRCNN configs.
+  optional FastRCNN fast_rcnn_config = 31;
+
+  optional bool use_mlm_loss = 32 [default = true];
+
+  optional float mlm_loss_weight = 33 [default = 1.0];
+
+  optional float masked_prob = 34 [default = 0.15];
+
+  optional bool inference = 35 [default = false];
+}
+

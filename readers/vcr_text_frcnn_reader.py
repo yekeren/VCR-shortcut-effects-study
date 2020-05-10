@@ -105,11 +105,11 @@ def _update_decoded_example(decoded_example, options):
                                                  pad=-1)
 
   mixed_rationale_choices_list = [
-      tf.concat([question, answer, ['[SEP]'], x], 0)
+      tf.concat([question, ['[SEP]'], answer, ['[SEP]'], x], 0)
       for x in rationale_choices_list
   ]
   mixed_rationale_choices_tag_list = [
-      tf.concat([question_tag, answer_tag, [-1], x], 0)
+      tf.concat([question_tag, [-1], answer_tag, [-1], x], 0)
       for x in rationale_choices_tag_list
   ]
   (mixed_rationale_choices,
