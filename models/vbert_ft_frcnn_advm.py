@@ -34,6 +34,11 @@ SEP_ID = 102
 MASK_ID = 103
 IMG_ID = 405
 
+INF = 1e10
+EPSILON = 0.01
+
+RelaxedOneHotCategorical = tf.contrib.distributions.RelaxedOneHotCategorical
+
 
 def remove_detections(num_detections,
                       detection_boxes,
@@ -120,14 +125,14 @@ def ground_detection_features(detection_features, tags):
   return tf.stack(tag_features, axis=1)
 
 
-class VBertFtFrcnnMLM(ModelBase):
+class VBertFtFrcnnAdvM(ModelBase):
   """Finetune the VBert model to solve the VCR task."""
 
   def __init__(self, model_proto, is_training):
-    super(VBertFtFrcnnMLM, self).__init__(model_proto, is_training)
+    super(VBertFtFrcnnAdvM, self).__init__(model_proto, is_training)
 
-    if not isinstance(model_proto, model_pb2.VBertFtFrcnnMLM):
-      raise ValueError('Options has to be an VBertFtFrcnnMLM proto.')
+    if not isinstance(model_proto, model_pb2.VBertFtFrcnnAdvM):
+      raise ValueError('Options has to be an VBertFtFrcnnAdvM proto.')
 
     options = model_proto
 
@@ -223,7 +228,7 @@ class VBertFtFrcnnMLM(ModelBase):
                                 detection_classes, detection_scores,
                                 detection_features, caption_ids,
                                 caption_tag_ids, caption_tag_features,
-                                caption_len):
+                                caption_adv_masks, caption_len):
     """Predicts the matching score of the given image-text pair.
 
     [CLS] [IMG1] [IMG2] ... [SEP] [TOKEN1] [TOKEN2] ... [SEP]
@@ -286,12 +291,22 @@ class VBertFtFrcnnMLM(ModelBase):
         caption_tag_features,
         zeros,
     ], 1)
-    return input_ids, input_masks, input_tag_masks, input_tag_features
+
+    # Create adversarial masks.
+    mask_zero = tf.fill([batch_size, 1], 0.0)
+    input_adv_masks = tf.concat([
+        mask_zero,
+        tf.fill([batch_size, max_detections], 0.0), mask_zero,
+        caption_adv_masks, mask_zero
+    ], 1)
+
+    return input_ids, input_masks, input_tag_masks, input_tag_features, input_adv_masks
 
   def image_text_matching(self, num_detections, detection_boxes,
                           detection_classes, detection_scores,
                           detection_features, caption_ids, caption_tag_ids,
-                          caption_tag_features, caption_length):
+                          caption_tag_features, caption_adv_masks,
+                          caption_length):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -308,46 +323,80 @@ class VBertFtFrcnnMLM(ModelBase):
       embedding_table: A [vocab_size, dims] float tensor.
     """
     (input_ids, input_masks, input_tag_masks,
-     input_tag_features) = self.create_bert_input_tensors(
+     input_tag_features, input_adv_masks) = self.create_bert_input_tensors(
          num_detections, detection_boxes, detection_classes, detection_scores,
          detection_features, caption_ids, caption_tag_ids, caption_tag_features,
-         caption_length)
+         caption_adv_masks, caption_length)
     bert_model = bert_modeling.BertModel(self._bert_config,
                                          self._is_training,
                                          input_ids=input_ids,
                                          input_mask=input_masks,
                                          input_tag_mask=input_tag_masks,
                                          input_tag_feature=input_tag_features,
+                                         input_adv_masks=input_adv_masks,
                                          scope='bert')
     return (bert_model.get_pooled_output(), bert_model.get_sequence_output(),
             bert_model.get_embedding_table())
 
-  def masked_language_modeling_randomize_masks(self,
-                                               choice_ids,
-                                               choice_lengths,
-                                               question_lengths,
-                                               masked_prob=0.15):
+  def generate_adversarial_masks(self,
+                                 choice_ids,
+                                 choice_lengths,
+                                 question_lengths,
+                                 hard=True):
     """Masked language modeling."""
     batch_size = choice_ids.shape[0]
     max_choice_len = tf.shape(choice_ids)[-1]
 
-    # Generate `masked_lm_masks` and modify `choice_ids` to get `masked_choice_ids`.
-    #   Condition 1: mask a proportion of tokens.
-    #   Condition 2: mask the answer, exclude the question part in the choice.
-    random_masks = tf.less_equal(
-        tf.random.uniform([batch_size, NUM_CHOICES, max_choice_len], 0.0, 1.0),
-        masked_prob)
+    with tf.variable_scope('adversarial'):  # Use a brand new embedding matrix.
+      with tf.variable_scope("embeddings", reuse=False):
+        (choice_embs_reshaped, _) = bert_modeling.embedding_lookup(
+            input_ids=tf.reshape(choice_ids, [batch_size * NUM_CHOICES, -1]),
+            vocab_size=self._bert_config.vocab_size,
+            embedding_size=self._bert_config.hidden_size,
+            initializer_range=self._bert_config.initializer_range,
+            word_embedding_name="word_embeddings",
+            use_one_hot_embeddings=False)
+        choice_embs = tf.reshape(
+            choice_embs_reshaped,
+            [batch_size, NUM_CHOICES, -1, self._bert_config.hidden_size])
 
+    # Predict logits which denoting the likehoold of the position of the mask.
     choice_masks = tf.logical_and(
         tf.sequence_mask(choice_lengths, maxlen=max_choice_len),
         tf.logical_not(tf.sequence_mask(question_lengths,
                                         maxlen=max_choice_len)))
-    masked_lm_masks = tf.logical_and(random_masks, choice_masks)
-    masked_choice_ids = tf.where(
-        masked_lm_masks,
-        tf.fill([batch_size, NUM_CHOICES, max_choice_len], MASK_ID), choice_ids)
+    choice_masks = tf.cast(choice_masks, tf.float32)
 
-    return masked_choice_ids, masked_lm_masks
+    with tf.variable_scope('adversarial'):
+      # Careful about regularizers: for simplicity, remove them.
+      choice_features = choice_embs
+
+      choice_shortcut_logits = slim.fully_connected(choice_features,
+                                                    num_outputs=1,
+                                                    activation_fn=None,
+                                                    scope='logits')
+      choice_shortcut_logits = tf.squeeze(choice_shortcut_logits, -1)
+
+    # Gumbel-Softmax to get the probable shortcut.
+    tvar = tf.Variable(2.0, name='adversarial/temperature_var', trainable=True)
+    temperature = tf.square(tvar) + EPSILON
+
+    tf.summary.histogram('shortcut/logtis', choice_shortcut_logits)
+    tf.summary.scalar('metrics/temperature', temperature)
+
+    choice_shortcut_logits = choice_shortcut_logits - INF * (1.0 - choice_masks)
+    a_sample = RelaxedOneHotCategorical(temperature,
+                                        logits=choice_shortcut_logits,
+                                        allow_nan_stats=False).sample()
+
+    if hard:
+      k = tf.shape(choice_shortcut_logits)[-1]
+      a_hard_sample = tf.cast(tf.one_hot(tf.argmax(a_sample, -1), k),
+                              a_sample.dtype)
+      a_sample = tf.stop_gradient(a_hard_sample - a_sample) + a_sample
+
+    # Returns the mask sampled from the distribution.
+    return a_sample, choice_shortcut_logits, choice_embs
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -416,18 +465,17 @@ class VBertFtFrcnnMLM(ModelBase):
       else:
         question_lengths = 1 + inputs[InputFields.question_len]
 
-      (choice_ids_masked,
-       masked_lm_masks) = self.masked_language_modeling_randomize_masks(
-           choice_ids,
-           choice_lengths,
-           question_lengths,
-           masked_prob=options.masked_prob)
-      predictions.update({'masked_lm_masks': masked_lm_masks})
-
-      # TODO: comment out
-      # Replace the original `choice_ids` with the masked version.
-      if not options.inference:
-        choice_ids = choice_ids_masked
+      (choice_adv_masks, choice_shortcut_logits,
+       choice_embs) = self.generate_adversarial_masks(choice_ids,
+                                                      choice_lengths,
+                                                      question_lengths)
+      predictions.update({
+          'adversarial_masks': choice_adv_masks,
+          'shortcut_logits': choice_shortcut_logits,
+          'choice_ids': choice_ids,
+          'label': inputs[self._field_label],
+          'choice_embs': choice_embs,
+      })
 
     # if options.apply_masks:
 
@@ -435,20 +483,21 @@ class VBertFtFrcnnMLM(ModelBase):
     choice_tag_ids_list = tf.unstack(choice_tag_ids, axis=1)
     choice_tag_features_list = tf.unstack(choice_tag_features, axis=1)
     choice_lengths_list = tf.unstack(choice_lengths, axis=1)
+    choice_adv_masks_list = tf.unstack(choice_adv_masks, axis=1)
 
     # Create ITM predictions for matching the ansewrs.
     reuse = False
     feature_to_predict_choices = []
     feature_to_predict_masks = []
-    for caption_ids, caption_tag_ids, caption_tag_features, caption_length in zip(
+    for caption_ids, caption_tag_ids, caption_tag_features, caption_adv_masks, caption_length in zip(
         choice_ids_list, choice_tag_ids_list, choice_tag_features_list,
-        choice_lengths_list):
+        choice_adv_masks_list, choice_lengths_list):
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
         (bert_output,
          bert_sequence_output, embedding_table) = self.image_text_matching(
              num_detections, detection_boxes, detection_classes,
              detection_scores, detection_features, caption_ids, caption_tag_ids,
-             caption_tag_features, caption_length)
+             caption_tag_features, caption_adv_masks, caption_length)
         feature_to_predict_choices.append(bert_output)
         feature_to_predict_masks.append(bert_sequence_output)
       reuse = True
@@ -462,26 +511,6 @@ class VBertFtFrcnnMLM(ModelBase):
                                     scope='itm/logits')
     predictions.update({'answer_prediction': tf.squeeze(logits, -1)})
 
-    # Create MLM predictions for predicting missing tokens.
-    if options.apply_masks and options.mlm_loss_weight > 0.0:
-      # Extract the GT mask.
-      label_masks = tf.one_hot(inputs[self._field_label],
-                               NUM_CHOICES,
-                               on_value=True,
-                               off_value=False)
-
-      # Decode the BERT prediction.
-      mlm_positions = tf.where(
-          tf.logical_and(masked_lm_masks, tf.expand_dims(label_masks, -1)))
-      mlm_token_ids = tf.gather_nd(choice_ids_raw, mlm_positions)
-
-      mlm_token_logits = self.decode_bert_output(
-          tf.gather_nd(bert_sequence_outputs, mlm_positions), embedding_table)
-      predictions.update({
-          'masked_lm_token_ids': mlm_token_ids,
-          'masked_lm_token_logits': mlm_token_logits,
-      })
-
     # Restore from BERT checkpoint.
     assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
         [
@@ -489,6 +518,12 @@ class VBertFtFrcnnMLM(ModelBase):
             if x.op.name.startswith('bert') or x.op.name.startswith('cls')
         ],  # IMPORTANT to filter using `bert` and `cls`.
         options.bert_checkpoint_file)
+    tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
+
+    assignment_map = {
+        'bert/embeddings/word_embeddings':
+            'adversarial/embeddings/word_embeddings'
+    }
     tf.train.init_from_checkpoint(options.bert_checkpoint_file, assignment_map)
 
     return predictions
@@ -512,16 +547,6 @@ class VBertFtFrcnnMLM(ModelBase):
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
     losses = loss_fn(labels=labels, logits=predictions['answer_prediction'])
     loss_dict = {'crossentropy': tf.reduce_mean(losses)}
-
-    # Masked language modeling loss.
-    if options.apply_masks and options.mlm_loss_weight > 0.0:
-      losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
-          labels=predictions['masked_lm_token_ids'],
-          logits=predictions['masked_lm_token_logits'])
-      loss = tf.cond(tf.shape(losses)[0] > 0,
-                     true_fn=lambda: tf.reduce_mean(losses),
-                     false_fn=lambda: 0.0)
-      loss_dict.update({'mlm_crossentropy': options.mlm_loss_weight * loss})
 
     return loss_dict
 
@@ -547,15 +572,6 @@ class VBertFtFrcnnMLM(ModelBase):
     accuracy_metric.update_state(y_true, y_pred)
     metric_dict = {'metrics/accuracy': accuracy_metric}
 
-    # Masked language modeling loss.
-    if options.apply_masks and options.mlm_loss_weight > 0.0:
-      y_true = predictions['masked_lm_token_ids']
-      y_pred = tf.argmax(predictions['masked_lm_token_logits'], -1)
-
-      accuracy_metric = tf.keras.metrics.Accuracy()
-      accuracy_metric.update_state(y_true, y_pred)
-      metric_dict.update({'metrics/mlm_accuracy': accuracy_metric})
-
     return metric_dict
 
   def get_variables_to_train(self):
@@ -575,6 +591,31 @@ class VBertFtFrcnnMLM(ModelBase):
           frozen_variables.append(var)
           break
 
+    # Look for adversarial variables.
+    adversarial_variables = [
+        var for var in trainable_variables
+        if var.op.name.startswith('adversarial/')
+    ]
+
     # Get trainable variables.
-    var_list = list(set(trainable_variables) - set(frozen_variables))
+    var_list = list(
+        set(trainable_variables) - set(frozen_variables) -
+        set(adversarial_variables))
     return var_list
+
+  def get_adversarial_variables_to_train(self):
+    """Returns model variables.
+      
+    Returns:
+      A list of trainable model variables.
+    """
+    options = self._model_proto
+    trainable_variables = tf.compat.v1.trainable_variables()
+
+    # Look for adversarial variables.
+    adversarial_variables = [
+        var for var in trainable_variables
+        if var.op.name.startswith('adversarial/')
+    ]
+
+    return adversarial_variables
