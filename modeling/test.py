@@ -53,11 +53,20 @@ def main(_):
     vocab = [x.strip('\n') for x in f]
 
   for example in trainer.predict(pipeline_proto, FLAGS.model_dir):
-    y_true = [vocab[x].encode('utf8') for x in example['masked_lm_token_ids']]
-    y_pred = [
-        vocab[x].encode('utf8')
-        for x in example['masked_lm_token_logits'].argmax(-1)
-    ]
+    print(example['label'][0])
+    for i in range(4):
+      choice= [
+          vocab[x]
+          for x in example['choice_ids'][0, i]
+      ]
+      mask = [x for x in example['adversarial_masks'][0, i]]
+      results = []
+      for c, m in zip(choice, mask):
+        if m:
+          results.append(c + '[MASK]')
+        else:
+          results.append(c)
+      print(results)
     import pdb
     pdb.set_trace()
     j = 1

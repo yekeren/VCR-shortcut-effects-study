@@ -88,20 +88,41 @@ def _create_model_fn(pipeline_proto, is_chief=True):
       tf.compat.v1.summary.scalar('metrics/learning_rate', learning_rate)
 
       # Use optimizer to minimize loss.
+      optimizer = optimization.create_optimizer(train_config.optimizer,
+                                                learning_rate=learning_rate)
+
       def transform_grads_fn(grads):
         if train_config.HasField('max_gradient_norm'):
           grads = tf.contrib.training.clip_gradient_norms(
               grads, max_norm=train_config.max_gradient_norm)
         return grads
 
-      optimizer = optimization.create_optimizer(train_config.optimizer,
-                                                learning_rate=learning_rate)
       train_op = tf.contrib.training.create_train_op(
           total_loss,
           optimizer,
           variables_to_train=variables_to_train,
           transform_grads_fn=transform_grads_fn,
           summarize_gradients=True)
+
+      if callable(getattr(model, 'get_adversarial_variables_to_train', None)):
+        logging.info('Create optimizer for adversarial training.')
+
+        adversarial_loss = 0
+        for name, loss in losses.items():
+          adversarial_loss -= loss
+
+        adversarial_optimizer = optimization.create_optimizer(
+            train_config.optimizer, learning_rate=0.00001)
+
+        (adversarial_variables_to_train
+        ) = model.get_adversarial_variables_to_train()
+        adversarial_train_op = tf.contrib.training.create_train_op(
+            adversarial_loss,
+            adversarial_optimizer,
+            variables_to_train=adversarial_variables_to_train,
+            transform_grads_fn=transform_grads_fn,
+            summarize_gradients=True)
+        train_op = tf.group(train_op, adversarial_train_op)
 
     elif tf.estimator.ModeKeys.EVAL == mode:
 

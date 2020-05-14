@@ -22,11 +22,6 @@ from readers.vcr_fields import NUM_CHOICES
 import bert_vcr.modeling as bert_modeling
 import tf_slim as slim
 
-FIELD_ANSWER_PREDICTION = 'answer_prediction'
-FIELD_NUM_DETECTIONS = 'num_detections'
-FIELD_DETECTION_CLASSES = 'detection_classes'
-FIELD_DETECTION_PREDICTION = 'detection_prediction'
-
 # UNK = '[UNK]'
 # CLS = '[CLS]'
 # SEP = '[SEP]'
@@ -341,11 +336,6 @@ class VBertFtFrcnn(ModelBase):
     with slim.arg_scope(self._slim_fc_scope):
       detection_features = self.project_detection_features(detection_features)
 
-    # image_vis = visualization.draw_bounding_boxes_on_image_tensors(
-    #     image, num_detections, detection_boxes, detection_classes,
-    #     detection_scores)
-    # tf.summary.image('detection/vis', image_vis)
-
     # Ground objects.
     (choice_ids, choice_tag_ids,
      choice_lengths) = (inputs[self._field_choices],
@@ -382,7 +372,7 @@ class VBertFtFrcnn(ModelBase):
                                     num_outputs=1,
                                     activation_fn=None,
                                     scope='itm/logits')
-    predictions.update({FIELD_ANSWER_PREDICTION: tf.squeeze(logits, -1)})
+    predictions.update({'answer_prediction': tf.squeeze(logits, -1)})
 
     # Restore from BERT checkpoint.
     assignment_map, _ = checkpoints.get_assignment_map_from_checkpoint(
@@ -410,7 +400,7 @@ class VBertFtFrcnn(ModelBase):
                if options.use_sigmoid_loss else
                tf.nn.softmax_cross_entropy_with_logits)
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
-    losses = loss_fn(labels=labels, logits=predictions[FIELD_ANSWER_PREDICTION])
+    losses = loss_fn(labels=labels, logits=predictions['answer_prediction'])
 
     return {'crossentropy': tf.reduce_mean(losses)}
 
@@ -431,7 +421,7 @@ class VBertFtFrcnn(ModelBase):
     # Primary metric.
     accuracy_metric = tf.keras.metrics.Accuracy()
     y_true = inputs[self._field_label]
-    y_pred = tf.argmax(predictions[FIELD_ANSWER_PREDICTION], -1)
+    y_pred = tf.argmax(predictions['answer_prediction'], -1)
 
     accuracy_metric.update_state(y_true, y_pred)
     return {'metrics/accuracy': accuracy_metric}

@@ -10,6 +10,7 @@ import tensorflow as tf
 
 from protos import model_pb2
 from modeling.models import fast_rcnn
+from modeling.models import rnn
 from modeling.utils import hyperparams
 from modeling.utils import visualization
 from modeling.utils import checkpoints
@@ -338,47 +339,82 @@ class VBertFtFrcnnAdvM(ModelBase):
     return (bert_model.get_pooled_output(), bert_model.get_sequence_output(),
             bert_model.get_embedding_table())
 
+  def rnn_with_label_embedding(self, choice_ids, choice_lengths, labels):
+    """Creates RNN architectures with label embeddings.
+    """
+    pass
+
   def generate_adversarial_masks(self,
                                  choice_ids,
                                  choice_lengths,
                                  question_lengths,
+                                 labels,
                                  hard=True):
     """Masked language modeling."""
+    options = self._model_proto
+    is_training = self._is_training
+
     batch_size = choice_ids.shape[0]
     max_choice_len = tf.shape(choice_ids)[-1]
 
-    with tf.variable_scope('adversarial'):  # Use a brand new embedding matrix.
+    with tf.variable_scope('adversarial'):
+      # Lookup for token embeddings.
+      # Note: DONOT share it with BERT, use a brand new embedding matrix instead.
       with tf.variable_scope("embeddings", reuse=False):
-        (choice_embs_reshaped, _) = bert_modeling.embedding_lookup(
+        (choice_embeddings_reshaped, _) = bert_modeling.embedding_lookup(
             input_ids=tf.reshape(choice_ids, [batch_size * NUM_CHOICES, -1]),
             vocab_size=self._bert_config.vocab_size,
             embedding_size=self._bert_config.hidden_size,
             initializer_range=self._bert_config.initializer_range,
             word_embedding_name="word_embeddings",
             use_one_hot_embeddings=False)
-        choice_embs = tf.reshape(
-            choice_embs_reshaped,
-            [batch_size, NUM_CHOICES, -1, self._bert_config.hidden_size])
+        choice_lengths_reshaped = tf.reshape(choice_lengths, [-1])
 
-    # Predict logits which denoting the likehoold of the position of the mask.
+      # Create label embedding.
+      full_label_embeddings = tf.get_variable(
+          name='label_embedding',
+          shape=[2, self._bert_config.hidden_size],
+          initializer=bert_modeling.create_initializer(
+              self._bert_config.initializer_range))
+      one_hot_labels = tf.one_hot(labels, NUM_CHOICES, on_value=1, off_value=0)
+      label_embeddings = tf.nn.embedding_lookup(full_label_embeddings,
+                                                one_hot_labels)
+      label_embeddings_reshaped = tf.reshape(
+          label_embeddings,
+          [batch_size * NUM_CHOICES, 1, self._bert_config.hidden_size])
+
+      # Layer norm.
+      choice_embeddings_reshaped = bert_modeling.layer_norm_and_dropout(
+          choice_embeddings_reshaped + label_embeddings_reshaped,
+          dropout_prob=self._bert_config.hidden_dropout_prob)
+
+      # RNN.
+      choice_features_reshaped, _ = rnn.RNN(choice_embeddings_reshaped,
+                                            choice_lengths_reshaped,
+                                            options=options.adversarial_rnn,
+                                            is_training=is_training)
+
+      # Fully-connected layer
+      choice_features = tf.reshape(
+          choice_features_reshaped,
+          [batch_size, NUM_CHOICES, -1, choice_features_reshaped.shape[-1]])
+      choice_shortcut_logits = slim.fully_connected(choice_features,
+                                                    num_outputs=1,
+                                                    activation_fn=None,
+                                                    scope='logits')
+      choice_shortcut_logits = tf.squeeze(choice_shortcut_logits, -1)
+    # END - with tf.variable_scope('adversarial'):
+
+    # Gumbel-Softmax to get the probable shortcut.
     choice_masks = tf.logical_and(
         tf.sequence_mask(choice_lengths, maxlen=max_choice_len),
         tf.logical_not(tf.sequence_mask(question_lengths,
                                         maxlen=max_choice_len)))
     choice_masks = tf.cast(choice_masks, tf.float32)
 
-    with tf.variable_scope('adversarial'):
-      # Careful about regularizers: for simplicity, remove them.
-      choice_features = choice_embs
-
-      choice_shortcut_logits = slim.fully_connected(choice_features,
-                                                    num_outputs=1,
-                                                    activation_fn=None,
-                                                    scope='logits')
-      choice_shortcut_logits = tf.squeeze(choice_shortcut_logits, -1)
-
-    # Gumbel-Softmax to get the probable shortcut.
-    tvar = tf.Variable(2.0, name='adversarial/temperature_var', trainable=True)
+    tvar = tf.Variable(np.sqrt(options.initial_temperature),
+                       name='adversarial/temperature_var',
+                       trainable=True)
     temperature = tf.square(tvar) + EPSILON
 
     tf.summary.histogram('shortcut/logtis', choice_shortcut_logits)
@@ -396,7 +432,7 @@ class VBertFtFrcnnAdvM(ModelBase):
       a_sample = tf.stop_gradient(a_hard_sample - a_sample) + a_sample
 
     # Returns the mask sampled from the distribution.
-    return a_sample, choice_shortcut_logits, choice_embs
+    return a_sample, choice_shortcut_logits, choice_features
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -459,25 +495,37 @@ class VBertFtFrcnnAdvM(ModelBase):
 
     # Create MLM predictions for masked tokens.
 
-    if options.apply_masks:
-      if options.rationale_model:
-        assert False
-      else:
-        question_lengths = 1 + inputs[InputFields.question_len]
+    if options.rationale_model:
+      assert False
+    else:
+      question_lengths = 1 + inputs[InputFields.question_len]
 
-      (choice_adv_masks, choice_shortcut_logits,
-       choice_embs) = self.generate_adversarial_masks(choice_ids,
-                                                      choice_lengths,
-                                                      question_lengths)
-      predictions.update({
-          'adversarial_masks': choice_adv_masks,
-          'shortcut_logits': choice_shortcut_logits,
-          'choice_ids': choice_ids,
-          'label': inputs[self._field_label],
-          'choice_embs': choice_embs,
-      })
+    (choice_adv_masks, choice_shortcut_logits,
+     choice_embeddings) = self.generate_adversarial_masks(
+         choice_ids,
+         choice_lengths,
+         question_lengths,
+         labels=inputs[self._field_label])
 
-    # if options.apply_masks:
+    if not is_training:
+      choice_adv_masks = tf.zeros_like(choice_adv_masks, dtype=tf.float32)
+    else:
+      choice_adv_masks = choice_adv_masks
+      random_masks = tf.less_equal(
+          tf.random.uniform(
+              [batch_size, NUM_CHOICES,
+               tf.shape(choice_adv_masks)[-1]], 0.0, 1.0), 0.5)
+      random_masks = tf.cast(random_masks, tf.float32)
+      choice_adv_masks = choice_adv_masks * random_masks
+
+    predictions.update({
+        'adversarial_masks': choice_adv_masks,
+        'shortcut_logits': choice_shortcut_logits,
+        'shortcut_probas': tf.nn.softmax(choice_shortcut_logits),
+        'choice_ids': choice_ids,
+        'label': inputs[self._field_label],
+        'choice_embeddings': choice_embeddings,
+    })
 
     choice_ids_list = tf.unstack(choice_ids, axis=1)
     choice_tag_ids_list = tf.unstack(choice_tag_ids, axis=1)

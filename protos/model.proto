@@ -1,6 +1,7 @@
 syntax = "proto2";
 
 import "protos/fast_rcnn.proto";
+import "protos/rnn.proto";
 import "protos/hyperparams.proto";
 
 enum AdaptationMethod {
@@ -186,12 +187,83 @@ message VBertFtFrcnnMLM{
   // FastRCNN configs.
   optional FastRCNN fast_rcnn_config = 31;
 
-  optional bool use_mlm_loss = 32 [default = true];
+  optional bool apply_masks = 32 [default = true];
 
   optional float mlm_loss_weight = 33 [default = 1.0];
 
   optional float masked_prob = 34 [default = 0.15];
 
   optional bool inference = 35 [default = false];
+}
+
+message VBertFtFrcnnAdvM {
+  extend Model {
+    optional VBertFtFrcnnAdvM ext = 1019;
+  }
+
+  // If true, train rationale prediction model.
+  optional bool rationale_model = 1 [default = false];
+
+  // Path to the bert config file.
+  optional string bert_config_file = 2;
+
+  // Path to the bert vocabulary file.
+  optional string bert_vocab_file = 3;
+
+  // Path to the pre-trained bert checkpoint.
+  optional string bert_checkpoint_file = 4;
+
+  // Out-of-Vocabulary token id.
+  optional uint32 bert_unk_token_id = 5 [default = 100];
+
+  // Path to the pre-trained detection mlp checkpoint.
+  optional string detection_mlp_checkpoint_file = 6;
+
+  // Maximum number of objects to be used in the model.
+  optional uint32 max_num_detections = 7 [default = 10];
+
+  // Hyperparameters of the fully-connected layers.
+  optional Hyperparams fc_hyperparams = 11;
+
+  // Keep probability of all dropout layers.
+  optional float dropout_keep_prob = 12 [default = 1.0];
+
+  // If true, use sigmoid crossentropy loss.
+  optional bool use_sigmoid_loss = 13 [default = false];
+
+  // Frozen variable patterns.
+  repeated string frozen_variable_patterns = 14;
+
+  // If true, use FRCNN features as well as detection labels.
+  optional bool use_detection_class_labels = 21 [default = true];
+
+  // Method to adapt detection feature.
+  optional AdaptationMethod detection_adaptation = 22 [default = MLP];
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
+
+  // Method to adapt VCR feature.
+  optional AdaptationMethod vcr_adaptation = 24 [default = LINEAR];
+
+  // Hidden units of the VCR mlp.
+  optional uint32 vcr_mlp_hidden_units = 25 [default = 768];
+
+  optional bool use_detection_loss = 26 [default = false];
+
+  // FastRCNN configs.
+  optional FastRCNN fast_rcnn_config = 31;
+
+  optional bool apply_masks = 32 [default = true];
+
+  optional float mlm_loss_weight = 33 [default = 1.0];
+
+  optional float masked_prob = 34 [default = 0.15];
+
+  optional bool inference = 35 [default = false];
+
+  optional float initial_temperature = 36 [default = 1.0];
+
+  optional RNN adversarial_rnn = 37;
 }
 
