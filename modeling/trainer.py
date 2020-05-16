@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from modeling.utils import optimization
 from modeling.utils import learning_rate_schedule
+from best_checkpoint_copier import BestCheckpointCopier
 
 from models import builder
 from readers import reader
@@ -109,10 +110,10 @@ def _create_model_fn(pipeline_proto, is_chief=True):
 
         adversarial_loss = 0
         for name, loss in losses.items():
-          adversarial_loss -= loss
+          adversarial_loss -= loss * train_config.adversarial_loss_weight
 
         adversarial_optimizer = optimization.create_optimizer(
-            train_config.optimizer, learning_rate=0.00001)
+            train_config.optimizer, learning_rate=learning_rate)
 
         (adversarial_variables_to_train
         ) = model.get_adversarial_variables_to_train()
@@ -162,6 +163,11 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
                                       max_steps=train_config.max_steps)
 
   # Create eval_spec.
+  exporter = BestCheckpointCopier(name='ckpts',
+                                  checkpoints_to_keep=5,
+                                  score_metric='metrics/accuracy',
+                                  compare_fn=lambda x, y: x.score > y.score)
+
   eval_config = pipeline_proto.eval_config
   eval_input_fn = reader.get_input_fn(pipeline_proto.eval_reader,
                                       is_training=False)
@@ -169,7 +175,8 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
       input_fn=eval_input_fn,
       steps=eval_config.steps,
       start_delay_secs=eval_config.start_delay_secs,
-      throttle_secs=eval_config.throttle_secs)
+      throttle_secs=eval_config.throttle_secs,
+      exporters=[exporter])
 
   # Create run_config.
   strategy = None
@@ -177,9 +184,10 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
     strategy = tf.contrib.distribute.MirroredStrategy()
   run_config = tf.estimator.RunConfig(
       train_distribute=strategy,
-      session_config=tf.ConfigProto(
-          allow_soft_placement=True,
-          gpu_options=tf.GPUOptions(allow_growth=True)),
+      session_config=tf.ConfigProto(allow_soft_placement=True,
+                                    gpu_options=tf.GPUOptions(
+                                        allow_growth=True,
+                                        per_process_gpu_memory_fraction=0.8)),
       save_summary_steps=train_config.save_summary_steps,
       save_checkpoints_steps=train_config.save_checkpoints_steps,
       keep_checkpoint_max=train_config.keep_checkpoint_max,
