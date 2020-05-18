@@ -339,11 +339,6 @@ class VBertFtFrcnnAdvM(ModelBase):
     return (bert_model.get_pooled_output(), bert_model.get_sequence_output(),
             bert_model.get_embedding_table())
 
-  def rnn_with_label_embedding(self, choice_ids, choice_lengths, labels):
-    """Creates RNN architectures with label embeddings.
-    """
-    pass
-
   def generate_adversarial_masks(self,
                                  choice_ids,
                                  choice_lengths,
@@ -414,7 +409,7 @@ class VBertFtFrcnnAdvM(ModelBase):
 
     tvar = tf.Variable(np.sqrt(options.initial_temperature),
                        name='adversarial/temperature_var',
-                       trainable=True)
+                       trainable=True, dtype=tf.float32)
     temperature = tf.square(tvar) + EPSILON
 
     tf.summary.histogram('shortcut/logtis', choice_shortcut_logits)
@@ -510,11 +505,10 @@ class VBertFtFrcnnAdvM(ModelBase):
     if not is_training:
       choice_adv_masks = tf.zeros_like(choice_adv_masks, dtype=tf.float32)
     else:
-      choice_adv_masks = choice_adv_masks
       random_masks = tf.less_equal(
           tf.random.uniform(
               [batch_size, NUM_CHOICES,
-               tf.shape(choice_adv_masks)[-1]], 0.0, 1.0), 0.5)
+               tf.shape(choice_adv_masks)[-1]], 0.0, 1.0), options.masked_prob)
       random_masks = tf.cast(random_masks, tf.float32)
       choice_adv_masks = choice_adv_masks * random_masks
 

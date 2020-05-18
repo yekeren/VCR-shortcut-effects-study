@@ -20,11 +20,26 @@ from models import builder
 from protos import pipeline_pb2
 import json
 
-flags.DEFINE_string('model_dir', 'logs.bak2/b2t2_00002_d20k',
+# flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_answer',
+#                     'Path to the directory which holds model checkpoints.')
+# 
+# flags.DEFINE_string('pipeline_proto',
+#                     'logs.adv_gen/gen_adv_answer/pipeline.pbtxt',
+#                     'Path to the pipeline proto file.')
+# 
+# flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
+#                     'Path to the vocabulary file.')
+# 
+# flags.DEFINE_string(
+#     'output_jsonl_file',
+#     'data/modified_annots/val_answer_shortcut/val_answer_shortcut.jsonl',
+#     'Path to the output jsonl file.')
+
+flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_rationale',
                     'Path to the directory which holds model checkpoints.')
 
 flags.DEFINE_string('pipeline_proto',
-                    'logs.bak2/b2t2_00002_d20k/pipeline.pbtxt',
+                    'logs.adv_gen/gen_adv_rationale/pipeline.pbtxt',
                     'Path to the pipeline proto file.')
 
 flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
@@ -32,8 +47,10 @@ flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
 
 flags.DEFINE_string(
     'output_jsonl_file',
-    'data/modified_annots/train_answer_shortcut/train_answer_shortcut.jsonl',
+    'data/modified_annots_combined/val_answer_shortcut/val_answer_shortcut_rationale.jsonl',
     'Path to the output jsonl file.')
+
+flags.DEFINE_bool('rationale', False, 'If true, generate rationale data.')
 
 FLAGS = flags.FLAGS
 
@@ -92,9 +109,11 @@ def main(_):
 
   # Get `next_examples_ts' tensor.
   if 'train' in FLAGS.output_jsonl_file:
-    input_fn = reader.get_input_fn(pipeline_proto.train_reader, is_training=False)
+    input_fn = reader.get_input_fn(pipeline_proto.train_reader,
+                                   is_training=False)
   else:
-    input_fn = reader.get_input_fn(pipeline_proto.eval_reader, is_training=False)
+    input_fn = reader.get_input_fn(pipeline_proto.eval_reader,
+                                   is_training=False)
 
   iterator = input_fn().make_initializable_iterator()
   next_examples_ts = iterator.get_next()
@@ -198,7 +217,10 @@ def main(_):
           max_losses = np.zeros(NUM_CHOICES)
           max_losses_choices = choices
 
-          sep_pos = np.where(choices == SEP_ID)[1]
+          if FLAGS.rationale:
+            sep_pos = np.where(choices == SEP_ID)[1].take([1,3,5,7])
+          else:
+            sep_pos = np.where(choices == SEP_ID)[1]
 
           for pos_id in range(sep_pos.min() + 1, choices_len.max()):
             # Compute the new losses.
@@ -239,6 +261,10 @@ def main(_):
               'choices': choices,
               'adversarial_choices': adversarial_choices,
           }
+          # print(label)
+          # for i in range(4):
+          #   print(choices[i])
+          #   print(adversarial_choices[i])
           output_fp.write(json.dumps(output_annot) + '\n')
 
         if batch_id % 10 == 0:

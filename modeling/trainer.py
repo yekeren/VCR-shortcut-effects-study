@@ -187,7 +187,7 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
       session_config=tf.ConfigProto(allow_soft_placement=True,
                                     gpu_options=tf.GPUOptions(
                                         allow_growth=True,
-                                        per_process_gpu_memory_fraction=0.8)),
+                                        per_process_gpu_memory_fraction=1.0)),
       save_summary_steps=train_config.save_summary_steps,
       save_checkpoints_steps=train_config.save_checkpoints_steps,
       keep_checkpoint_max=train_config.keep_checkpoint_max,
