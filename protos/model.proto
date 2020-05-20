@@ -262,8 +262,9 @@ message VBertFtFrcnnAdvM {
 
   optional bool inference = 35 [default = false];
 
-  optional float initial_temperature = 36 [default = 1.0];
+  optional float temperature_init_value = 36 [default = 1.0];
+  optional float temperature_regularizer = 37 [default = 0.0];
 
-  optional RNN adversarial_rnn = 37;
+  optional RNN adversarial_rnn = 38;
 }
 
