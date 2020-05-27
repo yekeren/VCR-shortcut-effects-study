@@ -149,6 +149,8 @@ def _update_decoded_example(decoded_example, options):
           tf.tile(tf.expand_dims(question_tag, 0), [NUM_CHOICES, 1]),
       InputFields.question_len:
           tf.tile(tf.expand_dims(question_len, 0), [NUM_CHOICES]),
+      InputFields.answer_len:
+          tf.tile(tf.expand_dims(answer_len, 0), [NUM_CHOICES]),
       InputFields.answer_choices:
           token_to_id_func(answer_choices),
       InputFields.answer_choices_tag:
@@ -329,6 +331,7 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.question: [NUM_CHOICES, None],
       InputFields.question_tag: [NUM_CHOICES, None],
       InputFields.question_len: [NUM_CHOICES],
+      InputFields.answer_len: [NUM_CHOICES],
       InputFields.answer_choices: [NUM_CHOICES, None],
       InputFields.answer_choices_tag: [NUM_CHOICES, None],
       InputFields.answer_choices_len: [NUM_CHOICES],
@@ -357,6 +360,7 @@ def _create_dataset(options, is_training, input_pipeline_context=None):
       InputFields.question: PAD_ID,
       InputFields.question_tag: -1,
       InputFields.question_len: 0,
+      InputFields.answer_len: 0,
       InputFields.answer_choices: PAD_ID,
       InputFields.answer_choices_tag: -1,
       InputFields.answer_choices_len: 0,

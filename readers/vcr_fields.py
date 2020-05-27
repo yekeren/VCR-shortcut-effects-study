@@ -54,6 +54,7 @@ class InputFields(object):
   question = 'question'
   question_tag = 'question_tag'
   question_len = 'question_len'
+  answer_len = 'answer_len'
 
   # Answer choices.
   answer_choices = 'answer_choices'
