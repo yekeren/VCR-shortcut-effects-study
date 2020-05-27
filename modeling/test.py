@@ -29,6 +29,8 @@ FLAGS = flags.FLAGS
 FIELD_ANSWER_PREDICTION = 'answer_prediction'
 
 
+np.set_printoptions(suppress=True)
+
 def _load_pipeline_proto(filename):
   """Loads pipeline proto from file.
 
@@ -60,9 +62,10 @@ def main(_):
           for x in example['choice_ids'][0, i]
       ]
       mask = [x for x in example['adversarial_masks'][0, i]]
+      pos = example['shortcut_probas'][0, i].argmax()
       results = []
-      for c, m in zip(choice, mask):
-        if m:
+      for p, (c, m) in enumerate(zip(choice, mask)):
+        if p == pos:
           results.append(c + '[MASK]')
         else:
           results.append(c)

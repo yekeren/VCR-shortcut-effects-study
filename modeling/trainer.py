@@ -116,7 +116,7 @@ def _create_model_fn(pipeline_proto, is_chief=True):
             train_config.optimizer, learning_rate=learning_rate)
 
         (adversarial_variables_to_train
-        ) = model.get_adversarial_variables_to_train()
+         ) = model.get_adversarial_variables_to_train()
         adversarial_train_op = tf.contrib.training.create_train_op(
             adversarial_loss,
             adversarial_optimizer,
@@ -128,6 +128,10 @@ def _create_model_fn(pipeline_proto, is_chief=True):
     elif tf.estimator.ModeKeys.EVAL == mode:
 
       eval_metric_ops = model.build_metrics(features, predictions)
+
+    elif tf.estimator.ModeKeys.PREDICT == mode:
+
+      predictions.update(features)
 
     # Merge summaries.
     summary_saver_hook = tf.estimator.SummarySaverHook(
@@ -187,7 +191,7 @@ def train_and_evaluate(pipeline_proto, model_dir, use_mirrored_strategy=False):
       session_config=tf.ConfigProto(allow_soft_placement=True,
                                     gpu_options=tf.GPUOptions(
                                         allow_growth=True,
-                                        per_process_gpu_memory_fraction=1.0)),
+                                        per_process_gpu_memory_fraction=0.8)),
       save_summary_steps=train_config.save_summary_steps,
       save_checkpoints_steps=train_config.save_checkpoints_steps,
       keep_checkpoint_max=train_config.keep_checkpoint_max,

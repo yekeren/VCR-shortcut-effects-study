@@ -53,6 +53,7 @@ GENDER_NEUTRAL_NAMES = [
     'Casey', 'Riley', 'Jessie', 'Jackie', 'Avery', 'Jaime', 'Peyton', 'Kerry',
     'Kendall', 'Frankie', 'Pat', 'Quinn'
 ]
+MASKING_OFFSET = 10000
 
 _NUM_PARTITIONS = 100
 
@@ -93,6 +94,10 @@ def _fix_tokenization(tokenized_sent, obj_to_type, old_det_to_new_ind,
   for tok in tokenized_sent:
     if isinstance(tok, list):
       for idx in tok:
+        mask_flag = False
+        if idx >= MASKING_OFFSET:
+          mask_flag = True
+          idx -= MASKING_OFFSET
         if old_det_to_new_ind is not None:
           idx = old_det_to_new_ind[idx]
 
@@ -100,12 +105,18 @@ def _fix_tokenization(tokenized_sent, obj_to_type, old_det_to_new_ind,
         text_to_use = GENDER_NEUTRAL_NAMES[
             idx %
             len(GENDER_NEUTRAL_NAMES)] if obj_type == 'person' else obj_type
-        new_tokenization_with_tags.append((case_fn(text_to_use), idx))
+        if mask_flag:
+          new_tokenization_with_tags.append(('[MASK]', idx))
+        else:
+          new_tokenization_with_tags.append((case_fn(text_to_use), idx))
     else:
       # new_tokenization_with_tags.append((case_fn(tok), -1))
       # yek@: disable wordpiece tokenizer
-      for sub_tok in bert_tokenizer.wordpiece_tokenizer.tokenize(case_fn(tok)):
-        new_tokenization_with_tags.append((sub_tok, -1))
+      if tok == '[MASK]':
+        new_tokenization_with_tags.append((tok, -1))
+      else:
+        for sub_tok in bert_tokenizer.wordpiece_tokenizer.tokenize(case_fn(tok)):
+          new_tokenization_with_tags.append((sub_tok, -1))
 
   tokenized_sent, tags = zip(*new_tokenization_with_tags)
   return list(tokenized_sent), list(tags)

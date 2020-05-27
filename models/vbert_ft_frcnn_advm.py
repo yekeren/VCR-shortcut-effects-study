@@ -362,25 +362,29 @@ class VBertFtFrcnnAdvM(ModelBase):
             embedding_size=self._bert_config.hidden_size,
             initializer_range=self._bert_config.initializer_range,
             word_embedding_name="word_embeddings",
-            use_one_hot_embeddings=False)
+            use_one_hot_embeddings=False,
+            word_embedding_trainable=options.adversarial_train_word_embedding)
         choice_lengths_reshaped = tf.reshape(choice_lengths, [-1])
 
       # Create label embedding.
-      full_label_embeddings = tf.get_variable(
-          name='label_embedding',
-          shape=[2, self._bert_config.hidden_size],
-          initializer=bert_modeling.create_initializer(
-              self._bert_config.initializer_range))
-      one_hot_labels = tf.one_hot(labels, NUM_CHOICES, on_value=1, off_value=0)
-      label_embeddings = tf.nn.embedding_lookup(full_label_embeddings,
-                                                one_hot_labels)
-      label_embeddings_reshaped = tf.reshape(
-          label_embeddings,
-          [batch_size * NUM_CHOICES, 1, self._bert_config.hidden_size])
+      if options.use_label_embedding:
+        full_label_embeddings = tf.get_variable(
+            name='label_embedding',
+            shape=[2, self._bert_config.hidden_size],
+            initializer=bert_modeling.create_initializer(
+                self._bert_config.initializer_range))
+        one_hot_labels = tf.one_hot(labels, NUM_CHOICES, on_value=1, off_value=0)
+        label_embeddings = tf.nn.embedding_lookup(full_label_embeddings,
+                                                  one_hot_labels)
+        label_embeddings_reshaped = tf.reshape(
+            label_embeddings,
+            [batch_size * NUM_CHOICES, 1, self._bert_config.hidden_size])
+
+        choice_embeddings_reshaped += label_embeddings_reshaped
 
       # Layer norm.
       choice_embeddings_reshaped = bert_modeling.layer_norm_and_dropout(
-          choice_embeddings_reshaped + label_embeddings_reshaped,
+          choice_embeddings_reshaped,
           dropout_prob=self._bert_config.hidden_dropout_prob)
 
       # RNN.
@@ -397,7 +401,9 @@ class VBertFtFrcnnAdvM(ModelBase):
                                                     num_outputs=1,
                                                     activation_fn=None,
                                                     scope='logits')
-      choice_shortcut_logits = tf.squeeze(choice_shortcut_logits, -1)
+      choice_shortcut_logits = tf.multiply(
+          options.adversarial_logits_scale,
+          tf.squeeze(choice_shortcut_logits, -1))
     # END - with tf.variable_scope('adversarial'):
 
     # Gumbel-Softmax to get the probable shortcut.
@@ -407,15 +413,20 @@ class VBertFtFrcnnAdvM(ModelBase):
                                         maxlen=max_choice_len)))
     choice_masks = tf.cast(choice_masks, tf.float32)
 
-    tvar = tf.Variable(np.sqrt(options.initial_temperature),
-                       name='adversarial/temperature_var',
-                       trainable=True, dtype=tf.float32)
-    temperature = tf.square(tvar) + EPSILON
+    temperature = tf.Variable(options.temperature_init_value,
+                              name='adversarial/temperature_var',
+                              trainable=options.temperature_trainable,
+                              dtype=tf.float32)
+    temperature = tf.maximum(temperature, EPSILON)
 
     tf.summary.histogram('shortcut/logtis', choice_shortcut_logits)
     tf.summary.scalar('metrics/temperature', temperature)
 
-    choice_shortcut_logits = choice_shortcut_logits - INF * (1.0 - choice_masks)
+    choice_shortcut_logits = choice_shortcut_logits - \
+        INF * (1.0 - choice_masks)
+    tf.summary.histogram('shortcut/probas',
+                         tf.nn.softmax(choice_shortcut_logits))
+
     a_sample = RelaxedOneHotCategorical(temperature,
                                         logits=choice_shortcut_logits,
                                         allow_nan_stats=False).sample()
@@ -427,7 +438,7 @@ class VBertFtFrcnnAdvM(ModelBase):
       a_sample = tf.stop_gradient(a_hard_sample - a_sample) + a_sample
 
     # Returns the mask sampled from the distribution.
-    return a_sample, choice_shortcut_logits, choice_features
+    return a_sample, choice_shortcut_logits, choice_features, temperature
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -495,8 +506,8 @@ class VBertFtFrcnnAdvM(ModelBase):
     else:
       question_lengths = 1 + inputs[InputFields.question_len]
 
-    (choice_adv_masks, choice_shortcut_logits,
-     choice_embeddings) = self.generate_adversarial_masks(
+    (choice_adv_masks, choice_shortcut_logits, choice_embeddings,
+     temperature) = self.generate_adversarial_masks(
          choice_ids,
          choice_lengths,
          question_lengths,
@@ -504,6 +515,7 @@ class VBertFtFrcnnAdvM(ModelBase):
 
     if not is_training:
       choice_adv_masks = tf.zeros_like(choice_adv_masks, dtype=tf.float32)
+
     else:
       random_masks = tf.less_equal(
           tf.random.uniform(
@@ -513,6 +525,7 @@ class VBertFtFrcnnAdvM(ModelBase):
       choice_adv_masks = choice_adv_masks * random_masks
 
     predictions.update({
+        'temperature': temperature,
         'adversarial_masks': choice_adv_masks,
         'shortcut_logits': choice_shortcut_logits,
         'shortcut_probas': tf.nn.softmax(choice_shortcut_logits),
@@ -589,6 +602,14 @@ class VBertFtFrcnnAdvM(ModelBase):
     labels = tf.one_hot(inputs[self._field_label], NUM_CHOICES)
     losses = loss_fn(labels=labels, logits=predictions['answer_prediction'])
     loss_dict = {'crossentropy': tf.reduce_mean(losses)}
+
+    # Temperature anealing.
+    temperature = predictions['temperature']
+    if options.temperature_regularizer > 0:
+      loss_dict.update({
+          'temperature_regularizer':
+              -tf.square(temperature) * options.temperature_regularizer
+      })
 
     return loss_dict
 

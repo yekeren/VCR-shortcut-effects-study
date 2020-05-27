@@ -20,35 +20,39 @@ from models import builder
 from protos import pipeline_pb2
 import json
 
-# flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_answer',
-#                     'Path to the directory which holds model checkpoints.')
-# 
-# flags.DEFINE_string('pipeline_proto',
-#                     'logs.adv_gen/gen_adv_answer/pipeline.pbtxt',
-#                     'Path to the pipeline proto file.')
-# 
-# flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
-#                     'Path to the vocabulary file.')
-# 
-# flags.DEFINE_string(
-#     'output_jsonl_file',
-#     'data/modified_annots/val_answer_shortcut/val_answer_shortcut.jsonl',
-#     'Path to the output jsonl file.')
-
-flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_rationale',
+flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_answer',
                     'Path to the directory which holds model checkpoints.')
 
 flags.DEFINE_string('pipeline_proto',
-                    'logs.adv_gen/gen_adv_rationale/pipeline.pbtxt',
+                    'logs.adv_gen/gen_adv_answer/pipeline.pbtxt',
                     'Path to the pipeline proto file.')
 
-flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
-                    'Path to the vocabulary file.')
-
+# flags.DEFINE_string(
+#     'output_jsonl_file',
+#     'data/modified_annots/val_answer_shortcut/val_answer_shortcut.jsonl.new',
+#     'Path to the output jsonl file.')
 flags.DEFINE_string(
     'output_jsonl_file',
-    'data/modified_annots_combined/val_answer_shortcut/val_answer_shortcut_rationale.jsonl',
+    'data/modified_annots/train_answer_shortcut/train_answer_shortcut.jsonl.new2',
     'Path to the output jsonl file.')
+
+################################
+# Rationale
+################################
+# flags.DEFINE_string('model_dir', 'logs.adv_gen/gen_adv_rationale',
+#                     'Path to the directory which holds model checkpoints.')
+# 
+# flags.DEFINE_string('pipeline_proto',
+#                     'logs.adv_gen/gen_adv_rationale/pipeline.pbtxt',
+#                     'Path to the pipeline proto file.')
+# 
+# flags.DEFINE_string(
+#     'output_jsonl_file',
+#     'data/modified_annots_rationale/val_answer_shortcut/val_answer_shortcut_rationale.jsonl.new',
+#     'Path to the output jsonl file.')
+# 
+flags.DEFINE_string('vocab_file', 'data/bert/tf1.x/BERT-Base/vocab.txt',
+                    'Path to the vocabulary file.')
 
 flags.DEFINE_bool('rationale', False, 'If true, generate rationale data.')
 
@@ -100,6 +104,14 @@ def pack_tensor_values(choices, choices_len, vocab):
 
 def main(_):
   logging.set_verbosity(logging.DEBUG)
+
+  existing_ids = set()
+  with open(
+      'data/modified_annots/train_answer_shortcut/train_answer_shortcut.jsonl.new',
+      'r') as f:
+    for line in f.readlines():
+      existing_ids.add(json.loads(line)['annot_id'])
+  logging.info('Load %s ids', len(existing_ids))
 
   for gpu in tf.config.experimental.list_physical_devices('GPU'):
     tf.config.experimental.set_memory_growth(gpu, True)
@@ -199,6 +211,9 @@ def main(_):
               inputs_batched[model._field_choices_tag][example_id],
               inputs_batched[model._field_choices_len][example_id],
               inputs_batched[model._field_label][example_id])
+          if annot_id in existing_ids:
+            logging.info('skip %s', annot_id)
+            continue
           (num_detections, detection_boxes, detection_clases, detection_scores,
            detection_features) = (
                inputs_batched[InputFields.num_detections][example_id],
@@ -218,9 +233,12 @@ def main(_):
           max_losses_choices = choices
 
           if FLAGS.rationale:
-            sep_pos = np.where(choices == SEP_ID)[1].take([1,3,5,7])
+            sep_pos = np.where(choices == SEP_ID)[1].take([1, 3, 5, 7])
           else:
             sep_pos = np.where(choices == SEP_ID)[1]
+
+          result_losses = [[] for _ in range(4)]
+          result_tokens = [[] for _ in range(4)]
 
           for pos_id in range(sep_pos.min() + 1, choices_len.max()):
             # Compute the new losses.
@@ -241,6 +259,13 @@ def main(_):
                     token_id == PAD_ID,
                     np.logical_or(token_id == CLS_ID, token_id == SEP_ID)))
 
+            for choice_id in range(4):
+              if is_valid[choice_id]:
+                result_losses[choice_id].append(
+                    round(float(losses[choice_id]), 4))
+                result_tokens[choice_id].append(
+                    vocab[choices[choice_id][pos_id]])
+
             # Maximize loss.
             adversarial_select_cond = np.logical_and(losses > max_losses,
                                                      is_valid)
@@ -260,6 +285,8 @@ def main(_):
               'label': int(label),
               'choices': choices,
               'adversarial_choices': adversarial_choices,
+              'result_losses': result_losses,
+              'result_tokens': result_tokens,
           }
           # print(label)
           # for i in range(4):

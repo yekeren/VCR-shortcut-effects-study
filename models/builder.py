@@ -7,12 +7,14 @@ from models.vbert_ft import VBertFt
 from models.vbert_ft_frcnn import VBertFtFrcnn
 from models.vbert_ft_frcnn_mlm import VBertFtFrcnnMLM
 from models.vbert_ft_frcnn_advm import VBertFtFrcnnAdvM
+from models.vbert_ft_frcnn_advm2 import VBertFtFrcnnAdvM2
 
 MODELS = {
     model_pb2.VBertFt.ext: VBertFt,
     model_pb2.VBertFtFrcnn.ext: VBertFtFrcnn,
     model_pb2.VBertFtFrcnnMLM.ext: VBertFtFrcnnMLM,
     model_pb2.VBertFtFrcnnAdvM.ext: VBertFtFrcnnAdvM,
+    model_pb2.VBertFtFrcnnAdvM2.ext: VBertFtFrcnnAdvM2,
 }
 
 
