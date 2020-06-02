@@ -1,6 +1,6 @@
 import json
 
-output_fn = 'data/adversarial_annotations.jsonl'
+output_fn = 'data/adversarial_annotations/adversarial_annotations.jsonl'
 answer_fn = 'data/modified_annots/val_answer_shortcut/val_answer_shortcut.jsonl.new'
 rationale_fn = 'data/modified_annots_rationale/val_answer_shortcut/val_answer_shortcut_rationale.jsonl.new'
 

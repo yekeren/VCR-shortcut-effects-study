@@ -280,6 +280,11 @@ message VBertFtFrcnnAdvM {
   optional bool adversarial_train_word_embedding = 41 [default = true];
 
   optional bool use_label_embedding = 42 [default = true];
+
+  // If specified, decay the masking probability.
+  optional float masked_prob_decay_rate = 45 [default = 0.0];
+
+  optional float masked_prob_l2_loss_weight = 46 [default = 0.0];
 }
 
 message VBertFtFrcnnAdvM2 {

@@ -62,10 +62,9 @@ def main(_):
           for x in example['choice_ids'][0, i]
       ]
       mask = [x for x in example['adversarial_masks'][0, i]]
-      pos = example['shortcut_probas'][0, i].argmax()
       results = []
       for p, (c, m) in enumerate(zip(choice, mask)):
-        if p == pos:
+        if m > 0.5:
           results.append(c + '[MASK]')
         else:
           results.append(c)

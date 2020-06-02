@@ -373,7 +373,10 @@ class VBertFtFrcnnAdvM(ModelBase):
             shape=[2, self._bert_config.hidden_size],
             initializer=bert_modeling.create_initializer(
                 self._bert_config.initializer_range))
-        one_hot_labels = tf.one_hot(labels, NUM_CHOICES, on_value=1, off_value=0)
+        one_hot_labels = tf.one_hot(labels,
+                                    NUM_CHOICES,
+                                    on_value=1,
+                                    off_value=0)
         label_embeddings = tf.nn.embedding_lookup(full_label_embeddings,
                                                   one_hot_labels)
         label_embeddings_reshaped = tf.reshape(
@@ -438,7 +441,7 @@ class VBertFtFrcnnAdvM(ModelBase):
       a_sample = tf.stop_gradient(a_hard_sample - a_sample) + a_sample
 
     # Returns the mask sampled from the distribution.
-    return a_sample, choice_shortcut_logits, choice_features, temperature
+    return a_sample, choice_shortcut_logits, choice_features, temperature, choice_masks
 
   def predict(self, inputs, **kwargs):
     """Predicts the resulting tensors.
@@ -464,7 +467,7 @@ class VBertFtFrcnnAdvM(ModelBase):
          inputs[InputFields.detection_boxes],
          inputs[InputFields.detection_classes],
          inputs[InputFields.detection_scores],
-     )
+    )
     batch_size = image.shape[0]
     (max_num_detections, num_detections, detection_boxes, detection_classes,
      detection_scores) = remove_detections(
@@ -502,30 +505,50 @@ class VBertFtFrcnnAdvM(ModelBase):
     # Create MLM predictions for masked tokens.
 
     if options.rationale_model:
-      assert False
+      question_lengths = 2 + \
+          inputs[InputFields.question_len] + inputs[InputFields.answer_len]
     else:
       question_lengths = 1 + inputs[InputFields.question_len]
 
-    (choice_adv_masks, choice_shortcut_logits, choice_embeddings,
-     temperature) = self.generate_adversarial_masks(
+    (choice_adv_masks, choice_shortcut_logits,
+     choice_embeddings, temperature, choice_masks) = self.generate_adversarial_masks(
          choice_ids,
          choice_lengths,
          question_lengths,
          labels=inputs[self._field_label])
 
-    if not is_training:
+    expected_masked_prob = options.masked_prob
+    if options.HasField('masked_prob_decay_rate'):
+      global_step = tf.compat.v1.train.get_global_step()
+      expected_masked_prob = tf.multiply(
+          options.masked_prob,
+          tf.exp(-options.masked_prob_decay_rate *
+                 tf.cast(global_step, tf.float32)))
+
+    if False:#not is_training:
       choice_adv_masks = tf.zeros_like(choice_adv_masks, dtype=tf.float32)
 
     else:
+      masking_ratio = tf.div(tf.cast(batch_size * NUM_CHOICES, tf.float32),
+                             tf.reduce_sum(choice_masks))
+      example_masking_ratio = tf.div(
+          expected_masked_prob, 1e-8 + masking_ratio)
+
       random_masks = tf.less_equal(
           tf.random.uniform(
               [batch_size, NUM_CHOICES,
-               tf.shape(choice_adv_masks)[-1]], 0.0, 1.0), options.masked_prob)
+               tf.shape(choice_adv_masks)[-1]], 0.0, 1.0), example_masking_ratio)
       random_masks = tf.cast(random_masks, tf.float32)
       choice_adv_masks = choice_adv_masks * random_masks
 
+      actual_masking_ratio = tf.div(tf.reduce_sum(choice_adv_masks),
+                                    tf.cast(tf.reduce_sum(choice_masks), tf.float32))
+      tf.summary.scalar('metrics/mask_proba', expected_masked_prob)
+      tf.summary.scalar('metrics/masking_ratio', actual_masking_ratio)
+
     predictions.update({
         'temperature': temperature,
+        'choice_masks': choice_masks,
         'adversarial_masks': choice_adv_masks,
         'shortcut_logits': choice_shortcut_logits,
         'shortcut_probas': tf.nn.softmax(choice_shortcut_logits),
@@ -545,8 +568,8 @@ class VBertFtFrcnnAdvM(ModelBase):
     feature_to_predict_choices = []
     feature_to_predict_masks = []
     for caption_ids, caption_tag_ids, caption_tag_features, caption_adv_masks, caption_length in zip(
-        choice_ids_list, choice_tag_ids_list, choice_tag_features_list,
-        choice_adv_masks_list, choice_lengths_list):
+            choice_ids_list, choice_tag_ids_list, choice_tag_features_list,
+            choice_adv_masks_list, choice_lengths_list):
       with tf.variable_scope(tf.get_variable_scope(), reuse=reuse):
         (bert_output,
          bert_sequence_output, embedding_table) = self.image_text_matching(

@@ -124,15 +124,18 @@ def main(_):
                                    adv_annot['answer_tokens'][i],
                                    adv_annot['answer_losses'][i]))
 
-        for i in range(4):
-          if annot[
-              'rationale_label'] == i and FLAGS.only_modify_distracting_options:
-            new_rationale_choices.append(annot['rationale_choices'][i])
-          else:
-            new_rationale_choices.append(
-                _modify_annotation(annot['rationale_choices'][i],
-                                   adv_annot['rationale_tokens'][i],
-                                   adv_annot['rationale_losses'][i]))
+        if 'rationale_label' in adv_annot:
+          for i in range(4):
+            if annot[
+                'rationale_label'] == i and FLAGS.only_modify_distracting_options:
+              new_rationale_choices.append(annot['rationale_choices'][i])
+            else:
+              new_rationale_choices.append(
+                  _modify_annotation(annot['rationale_choices'][i],
+                                     adv_annot['rationale_tokens'][i],
+                                     adv_annot['rationale_losses'][i]))
+        else:
+          new_rationale_choices = annot['rationale_choices']
 
         # for i in range(4):
         #   print(new_answer_choices[i])
