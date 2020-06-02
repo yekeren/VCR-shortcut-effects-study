@@ -131,7 +131,18 @@ def _create_model_fn(pipeline_proto, is_chief=True):
 
     elif tf.estimator.ModeKeys.PREDICT == mode:
 
+      # Add input tensors to the predictions.
       predictions.update(features)
+
+      # Create additional tensors if specified.
+      create_additional_predictions = params.get(
+          'create_additional_predictions', None)
+
+      if create_additional_predictions:
+        assert callable(create_additional_predictions)
+
+        predictions.update(create_additional_predictions(
+            tf.get_default_graph()))
 
     # Merge summaries.
     summary_saver_hook = tf.estimator.SummarySaverHook(
@@ -243,13 +254,17 @@ def train(pipeline_proto, model_dir, use_mirrored_strategy=False):
   estimator.train(train_input_fn, max_steps=train_config.max_steps)
 
 
-def predict(pipeline_proto, model_dir=None, yield_single_examples=False):
+def predict(pipeline_proto,
+            model_dir=None,
+            yield_single_examples=False,
+            params=None):
   """Generates inference results.
 
   Args:
     pipeline_proto: A pipeline_pb2.Pipeline proto.
     model_dir: Path to the directory saving model checkpoints.
     yield_single_examples: If true, yield a single example.
+    params: Additional parameters to be passed to tf.Estimator.
 
   Yields:
     example: inference results.
@@ -269,7 +284,8 @@ def predict(pipeline_proto, model_dir=None, yield_single_examples=False):
 
   estimator = tf.estimator.Estimator(model_fn=model_fn,
                                      model_dir=model_dir,
-                                     config=run_config)
+                                     config=run_config,
+                                     params=params)
 
   # Predict results.
 
