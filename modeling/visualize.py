@@ -17,11 +17,11 @@ from bertviz import head_view
 
 
 flags.DEFINE_string('model_dir',
-                    'logs.final.eval/b2t2_res101_edecay00001/ckpts',
+                    'logs.final.eval/b2t2_entropy0.00001_res101_f00001/ckpts',
                     'Path to the directory which holds model checkpoints.')
 
 flags.DEFINE_string('pipeline_proto',
-                    'logs.final.eval/b2t2_res101_edecay00001/pipeline.pbtxt',
+                    'logs.final.eval/b2t2_entropy0.00001_res101_f00001/pipeline.pbtxt',
                     'Path to the pipeline proto file.')
 
 flags.DEFINE_integer('num_bert_layers', 12, 'Number of BERT layers.')
@@ -53,29 +53,6 @@ def _load_vocabulary(filename):
   """
   with tf.io.gfile.GFile(filename, 'r') as fp:
     return [x.strip('\n') for x in fp]
-
-
-def dyamic_programming_solver(attns):
-  """DP to calculate the contribution of each tokens.
-
-  Args:
-    attn: A [num_layers, from_tokens, to_tokens] float tensor.
-
-  Returns:
-    contrib_scores: A [from_tokens] float tensor, denoting the contribution to [CLS].
-  """
-  num_layers = attns.shape[0]
-
-  dp = np.zeros_like(attns)
-
-  dp[0, :, :] = attns[0, :, :]
-  print(dp[0, :, 0])
-  for i in range(1, num_layers):
-    dp[i, :, :] = np.matmul(dp[i - 1, :, :], attns[i, :, :])
-    print(dp[i, :, 0])
-  import pdb
-  pdb.set_trace()
-  return dp[-1, :, 0]
 
 
 def main(_):
@@ -112,11 +89,11 @@ def main(_):
 
   count = 0
   params = {'create_additional_predictions': attn_processor_fn}
+
+  entropy_list = []
   for example_id, example in enumerate(
           trainer.predict(pipeline_proto, FLAGS.model_dir, params=params)):
 
-
-    count = {}
     detection_classes = []
     for i, x in enumerate(example['detection_classes'][0]):
       name = vocab[x]
@@ -135,17 +112,21 @@ def main(_):
     # `attns` = [N, H, F, T]
     attns = np.concatenate([example['bert_attn_%i' % i]
                             for i in range(num_layers)], 0)
-    # `attns` = [N, F, T]
-    attns = attns.mean(1)
+    log_attns = np.log(attns + 1e-8)
 
-    contrib_scores = dyamic_programming_solver(attns)
-    import pdb
-    pdb.set_trace()
-    j = 1
+    # `entropy` = [N, H]
+    entropy = - (attns * log_attns).sum(-1).mean(-1)
+    entropy_list.append(entropy)
 
     # Counting.
     count += len(example['annot_id'])
-    break
+    if count % 100 == 0:
+      print(count)
+
+  entropy = np.stack(entropy_list, -1).mean(-1)
+  for i in range(len(entropy)):
+    line = ','.join(['%.3lf' % x for x in entropy[i]])
+    print(line)
 
   logging.info('Done')
 

@@ -12,24 +12,19 @@ import tensorflow as tf
 from google.protobuf import text_format
 from protos import pipeline_pb2
 from modeling import trainer
-from readers import reader
-from readers.vcr_reader import InputFields
-from readers.vcr_reader import NUM_CHOICES
-from models import builder
-from protos import pipeline_pb2
-import json
 
 flags.DEFINE_string('model_dir', None,
                     'Path to the directory which holds model checkpoints.')
 
 flags.DEFINE_string('pipeline_proto', None, 'Path to the pipeline proto file.')
 
+flags.DEFINE_bool('rationale', False, 'If true, evaluate rationale results.')
+
+flags.DEFINE_string('input_pattern', None,
+                    'If specified, replace the input files.')
+
 FLAGS = flags.FLAGS
 
-FIELD_ANSWER_PREDICTION = 'answer_prediction'
-
-
-np.set_printoptions(suppress=True)
 
 def _load_pipeline_proto(filename):
   """Loads pipeline proto from file.
@@ -50,45 +45,35 @@ def main(_):
   for gpu in tf.config.experimental.list_physical_devices('GPU'):
     tf.config.experimental.set_memory_growth(gpu, True)
   pipeline_proto = _load_pipeline_proto(FLAGS.pipeline_proto)
+  pipeline_proto.eval_reader.vcr_reader_v2.batch_size = 9
 
-  with open('data/bert/tf1.x/BERT-Base/vocab.txt', 'r', encoding='utf8') as f:
-    vocab = [x.strip('\n') for x in f]
+  eval_name = None
+  if FLAGS.input_pattern is not None:
+    eval_name = os.path.basename(FLAGS.input_pattern).split('.')[0]
+    del pipeline_proto.eval_reader.vcr_reader_v2.input_pattern[:]
+    pipeline_proto.eval_reader.vcr_reader_v2.input_pattern.append(
+        FLAGS.input_pattern)
 
-  for example in trainer.predict(pipeline_proto, FLAGS.model_dir):
-    print(example['label'][0])
-    for i in range(4):
-      choice= [
-          vocab[x]
-          for x in example['choice_ids'][0, i]
-      ]
-      mask = [x for x in example['adversarial_masks'][0, i]]
-      results = []
-      for p, (c, m) in enumerate(zip(choice, mask)):
-        if m > 0.5:
-          results.append(c + '[MASK]')
-        else:
-          results.append(c)
-      print(results)
-    import pdb
-    pdb.set_trace()
-    j = 1
-    #batch_size = len(example['question'])
-    #for i in range(batch_size):
-    #  print('#' * 128)
-    #  print(example['question'][i])
-    #  print(example['answer_label'][i])
-    #  for j in range(4):
-    #    sentence = []
-    #    for token, indicator in zip(example['answer_choices'][i, j],
-    #                                example['shortcut_mask'][i, j]):
-    #      if not indicator:
-    #        sentence.append(token.decode('utf8') + '[REMOVE]')
-    #      else:
-    #        sentence.append(token.decode('utf8'))
-    #    print(' '.join(sentence))
-    #    print(example['answer_logits'][i][j].tolist())
-    #    print(example['a_soft_sample'][i][j].tolist())
-    #  print()
+  count = 0
+  annot_ids, predictions = [], []
+  for example_id, example in enumerate(
+      trainer.predict(pipeline_proto, FLAGS.model_dir)):
+    count += len(example['annot_id'])
+    annot_ids.append(example['annot_id'])
+    predictions.append(example['answer_prediction'])
+    logging.info('Predicted %s', count)
+
+  annot_ids = np.concatenate(annot_ids, 0)
+  predictions = np.concatenate(predictions, 0)
+
+  if eval_name is not None:
+    eval_npy = os.path.join(FLAGS.model_dir, '%s.npy' % eval_name)
+    with open(eval_npy, 'wb') as f:
+      np.save(f, annot_ids)
+      np.save(f, predictions)
+    logging.info('Results are written to %s.', eval_npy)
+
+  logging.info('Evaluated %i examples.', count)
 
 
 if __name__ == '__main__':

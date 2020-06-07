@@ -3,7 +3,8 @@ syntax = "proto2";
 message Reader {
   oneof reader_oneof {
     VCRReader vcr_reader = 1;
-    VCRTextFRCNNReader vcr_text_frcnn_reader = 2;
+    VCRReaderV2 vcr_reader_v2 = 2;
+    VCRTextFRCNNReader vcr_text_frcnn_reader = 3;
   }
 }
 
@@ -27,6 +28,37 @@ message VCRReader {
 
   // Desired size of the mininum of (height, width).
   optional int32 desired_size = 8 [default = 500];
+
+  // Vocabulary file.
+  optional string vocab_file = 11;
+
+  // ID of the OOV tokens.
+  optional int32 out_of_vocabulary_token_id = 12 [default = 100];
+}
+
+message VCRReaderV2 {
+  // Pattern of the input files.
+  repeated string input_pattern = 1;
+
+  // Shuffle buffer size.
+  optional int32 shuffle_buffer_size = 2 [default = 1000];
+
+  // Cycle length of interleave call.
+  optional int32 interleave_cycle_length = 4 [default = 2]; 
+  // Number of parallel calls.
+  optional int32 num_parallel_calls = 5 [default = 5];
+
+  // Batch size.
+  optional int32 batch_size = 6 [default = 32];
+
+  // Prefetch buffer size.
+  optional int32 prefetch_buffer_size = 7 [default = 200];
+
+  // Desired size of the mininum of (height, width).
+  optional int32 desired_size = 8 [default = 500];
+
+  // Detection vocabulary file.
+  optional string detection_vocab_file = 10;
 
   // Vocabulary file.
   optional string vocab_file = 11;

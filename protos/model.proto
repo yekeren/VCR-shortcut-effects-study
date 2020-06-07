@@ -129,6 +129,42 @@ message VBertFtFrcnn{
   optional FastRCNN fast_rcnn_config = 31;
 }
 
+message VBertFtFrcnnV2{
+  extend Model {
+    optional VBertFtFrcnnV2 ext = 1007;
+  }
+
+  // If true, train rationale prediction model.
+  optional bool rationale_model = 1 [default = false];
+
+  // Path to the bert config file.
+  optional string bert_config_file = 2;
+
+  // Path to the pre-trained bert checkpoint.
+  optional string bert_checkpoint_file = 4;
+
+  // Maximum number of objects to be used in the model.
+  optional uint32 max_num_detections = 7 [default = 10];
+
+  // Hyperparameters of the fully-connected layers.
+  optional Hyperparams fc_hyperparams = 11;
+
+  // Keep probability of all dropout layers.
+  optional float dropout_keep_prob = 12 [default = 1.0];
+
+  // If true, use sigmoid crossentropy loss.
+  optional bool use_sigmoid_loss = 13 [default = false];
+
+  // Frozen variable patterns.
+  repeated string frozen_variable_patterns = 14;
+
+  // Hidden units of the detection mlp.
+  optional uint32 detection_mlp_hidden_units = 23 [default = 768];
+
+  // FastRCNN configs.
+  optional FastRCNN fast_rcnn_config = 31;
+}
+
 message VBertFtFrcnnMLM{
   extend Model {
     optional VBertFtFrcnnMLM ext = 1016;
@@ -201,6 +237,9 @@ message VBertFtFrcnnMLM{
 
   // Inference mode for evaluation.
   optional bool inference = 45 [default = false];
+
+  // Entropy regularizer.
+  optional float bert_attention_entropy_regularizer = 46 [default = 0.0];
 }
 
 message VBertFtFrcnnAdvM {

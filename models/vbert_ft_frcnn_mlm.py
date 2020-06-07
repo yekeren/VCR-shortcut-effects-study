@@ -291,7 +291,7 @@ class VBertFtFrcnnMLM(ModelBase):
   def image_text_matching(self, num_detections, detection_boxes,
                           detection_classes, detection_scores,
                           detection_features, caption_ids, caption_tag_ids,
-                          caption_tag_features, caption_length):
+                          caption_tag_features, caption_length, attention_entropy_regularizer=0.0):
     """Predicts the matching score of the given image-text pair.
 
     Args:
@@ -318,6 +318,7 @@ class VBertFtFrcnnMLM(ModelBase):
                                          input_mask=input_masks,
                                          input_tag_mask=input_tag_masks,
                                          input_tag_feature=input_tag_features,
+                                         attention_entropy_regularizer=attention_entropy_regularizer,
                                          scope='bert')
     return (bert_model.get_pooled_output(), bert_model.get_sequence_output(),
             bert_model.get_embedding_table())
@@ -461,7 +462,7 @@ class VBertFtFrcnnMLM(ModelBase):
          bert_sequence_output, embedding_table) = self.image_text_matching(
              num_detections, detection_boxes, detection_classes,
              detection_scores, detection_features, caption_ids, caption_tag_ids,
-             caption_tag_features, caption_length)
+             caption_tag_features, caption_length, attention_entropy_regularizer=options.bert_attention_entropy_regularizer)
         feature_to_predict_choices.append(bert_output)
         feature_to_predict_masks.append(bert_sequence_output)
       reuse = True

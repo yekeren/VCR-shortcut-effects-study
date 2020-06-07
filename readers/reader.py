@@ -4,10 +4,12 @@ from __future__ import print_function
 
 from protos import reader_pb2
 from readers import vcr_reader
+from readers import vcr_reader_v2
 from readers import vcr_text_frcnn_reader
 
 _READERS = {
     'vcr_reader': vcr_reader,
+    'vcr_reader_v2': vcr_reader_v2,
     'vcr_text_frcnn_reader': vcr_text_frcnn_reader,
 }
 

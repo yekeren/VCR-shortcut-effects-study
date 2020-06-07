@@ -116,7 +116,7 @@ def _create_model_fn(pipeline_proto, is_chief=True):
             train_config.optimizer, learning_rate=learning_rate)
 
         (adversarial_variables_to_train
-         ) = model.get_adversarial_variables_to_train()
+        ) = model.get_adversarial_variables_to_train()
         adversarial_train_op = tf.contrib.training.create_train_op(
             adversarial_loss,
             adversarial_optimizer,
@@ -131,8 +131,8 @@ def _create_model_fn(pipeline_proto, is_chief=True):
 
     elif tf.estimator.ModeKeys.PREDICT == mode:
 
-      # Add input tensors to the predictions.
-      predictions.update(features)
+      # # Add input tensors to the predictions.
+      # predictions.update(features)
 
       # Create additional tensors if specified.
       create_additional_predictions = params.get(
