@@ -1,4 +1,10 @@
 # VCR-shortcut-effects-study
+
+  * [Introduction](introduction)
+  * [Validation data for verifying the shortcuts](#validation-data-for-verifying-the-shortcuts)
+  * [Our paper](#our-paper)
+
+## Introduction
 Code and data of our AAAI2021 paper "A Case Study of the Shortcut Effects in Visual Commonsense Reasoning"
 
 ## Validation data for verifying the shortcuts
@@ -15,3 +21,16 @@ The methodology to generate these data are mentioned in our paper section "Metho
 |                       | [KeepTop-1](data/adversarial_based/val_adv_keeptop1.jsonl) | 26,534 | Paper Table 4, Column 5 |
 |                       | [KeepTop-3](data/adversarial_based/val_adv_keeptop3.jsonl) | 26,534 | Paper Table 4, Column 6 |
 |                       | [KeepTop-5](data/adversarial_based/val_adv_keeptop5.jsonl) | 26,534 | Paper Table 4, Column 7 |
+
+## Our paper
+If you found this repository useful or used our data for evaluation, please cite our paper
+
+```
+@InProceedings{Ye_2021_AAAI,
+  author = {Ye, Keren and Kovashka, Adriana},
+  title = {A Case Study of the Shortcut Effects in Visual Commonsense Reasoning},
+  booktitle = {Proceedings of the Thirty-Fifth AAAI Conference on Artificial Intelligence (AAAI)},
+  month = {Feb},
+  year = {2021}
+}
+```
