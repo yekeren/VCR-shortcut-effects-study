@@ -12,6 +12,7 @@
 
 ## Introduction
 Code and data of our AAAI2021 paper "A Case Study of the Shortcut Effects in Visual Commonsense Reasoning"
+<img src="g3doc/images/concept.png"/>
 
 ## Prerequisites
 
