@@ -27,10 +27,13 @@ The methodology to generate these data are mentioned in our paper section "Metho
 ### Rule-based modification
 
 Please refer to the code under the "tools" directory. 
-[rephrase_choice_singular.py](tools/rephrase_choice_singular.py) and [rephrase_choice_plural.py](tools/rephrase_choice_plural.py) generate the Rule-Singular and Rule-Plural validation data, respectively.
+[rephrase_choice_singular.py](tools/rephrase_choice_singular.py) and [rephrase_choice_plural.py](tools/rephrase_choice_plural.py) generate the Rule-Singular and Rule-Plural validation data, respectively. To run them, just type ```python rephrase_choice_singular.py``` and ```python rephrase_choice_plural.py``` with default arguments.
 
 ### Adversarial modification
 
+We use [shortcut_main.py](modeling/shortcut_main.py) to score the effect of removing individual tokens in the answer/rationale.
+Then, we use [format_adversarial_annotations.py](tools/format_adversarial_annotations.py) to merge the results from both answering model and rationale model.
+Finally, we use [merge_adversarial_annotations.py](tools/merge_adversarial_annotations.py) to generate the setting of AdvTop-1, KeepTop-1, KeepTop-3, KeepTop-5, which are used in our Table 4.
 
 ## Our paper
 If you found this repository useful or used our data for evaluation, please cite our paper
