@@ -16,18 +16,16 @@ import numpy as np
 import PIL.Image
 import tensorflow as tf
 
-from bert import tokenization
-
 flags.DEFINE_string('annotations_jsonl_file', 'data/vcr1annots/val.jsonl',
                     'Path to the annotations file in jsonl format.')
 
 flags.DEFINE_string('output_jsonl_file',
-                    'data/rule_based_annotations/val_replaced.jsonl',
+                    'data/rule_based/val_rule_singular.jsonl.v2',
                     'Path to the annotations file in jsonl format.')
 
-flags.DEFINE_bool('modify_positives', False, 'If true, modify correct choices.')
+flags.DEFINE_bool('modify_positives', True, 'If true, modify correct choices.')
 
-flags.DEFINE_bool('modify_negatives', False,
+flags.DEFINE_bool('modify_negatives', True,
                   'If true, modify distracting choices.')
 
 flags.DEFINE_string('default_gender_pronoun', 'he',
@@ -151,7 +149,8 @@ def modify_choices(detection_classes, question, choices, label):
       if i != label:
         if FLAGS.modify_negatives:
           modified += 1
-          new_choice = replace_gender_pronoun_with_tag(choice, detection_classes,
+          new_choice = replace_gender_pronoun_with_tag(choice,
+                                                       detection_classes,
                                                        person_tags,
                                                        question_person_tags)
       else:
@@ -161,7 +160,8 @@ def modify_choices(detection_classes, question, choices, label):
           default_pronoun = get_most_probable_pronoun(choice,
                                                       question,
                                                       default=default)
-          new_choice = replace_tag_with_gender_pronoun(choice, detection_classes,
+          new_choice = replace_tag_with_gender_pronoun(choice,
+                                                       detection_classes,
                                                        person_tags,
                                                        question_person_tags,
                                                        default_pronoun)

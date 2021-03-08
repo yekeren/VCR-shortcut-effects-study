@@ -16,18 +16,16 @@ import numpy as np
 import PIL.Image
 import tensorflow as tf
 
-from bert import tokenization
-
 flags.DEFINE_string('annotations_jsonl_file', 'data/vcr1annots/val.jsonl',
                     'Path to the annotations file in jsonl format.')
 
 flags.DEFINE_string('output_jsonl_file',
-                    'data/rule_based_annotations/val_replaced.jsonl',
+                    'data/rule_based_annotations/val_rule_plural.jsonl.v2',
                     'Path to the annotations file in jsonl format.')
 
-flags.DEFINE_bool('modify_positives', False, 'If true, modify correct choices.')
+flags.DEFINE_bool('modify_positives', True, 'If true, modify correct choices.')
 
-flags.DEFINE_bool('modify_negatives', False,
+flags.DEFINE_bool('modify_negatives', True,
                   'If true, modify distracting choices.')
 
 FLAGS = flags.FLAGS
