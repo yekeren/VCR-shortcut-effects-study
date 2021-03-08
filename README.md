@@ -2,6 +2,7 @@
 
   * [Introduction](introduction)
   * [Prerequisites](#prerequisites)
+  * [How simple to beat the random baseline](#how-simple-to-beat-the-random-baseline)
   * [Validation data for verifying the shortcuts](#validation-data-for-verifying-the-shortcuts)
     -  [Rule-based modification](#rule-based-modification)
     -  [Adversarial modification](#adversarial-modification)
@@ -18,6 +19,9 @@ Code and data of our AAAI2021 paper "A Case Study of the Shortcut Effects in Vis
   * Python packages ```pip install -r requirements.txt```
   * Download and unzip the VCR annotations to ```data/vcr1annots```
   * Download and put the VCR images zip file to ```data/vcr1images.zip```
+
+## How simple to beat the random baseline
+Please refer to our [cheat.py](tools/cheat.py). We count the overlap between the question and answer options and achieved a 29% accuracy (v.s. Random Guess 25%).
 
 ## Validation data for verifying the shortcuts
 
