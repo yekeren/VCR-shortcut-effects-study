@@ -12,7 +12,6 @@
 
 ## Introduction
 Code and data of our AAAI2021 paper "A Case Study of the Shortcut Effects in Visual Commonsense Reasoning"
-<img src="g3doc/images/concept.png"/>
 
 ## Prerequisites
 
@@ -26,6 +25,8 @@ Please refer to our [cheat.py](tools/cheat.py).
 We count the overlap between the question and answer options and achieved a 29% accuracy (v.s. Random Guess 25%).
 Moreover, we found that more than 65% of the correct options have the most overlapped tags.
 This provides a strong hint regarding the correct answer.
+
+<img width="60%" src="g3doc/images/concept.png"/>
 
 ## Validation data for verifying the shortcuts
 
