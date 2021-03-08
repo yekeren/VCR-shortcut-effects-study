@@ -46,10 +46,14 @@ We also provide more details below.
 
 ### Rule-based modification
 
-Please refer to the code under the "tools" directory. 
+This method targets on how much different methods rely on person tag shortcuts.
+Please refer to the code under the "tools" directory for the methods' details. 
 [rephrase_choice_singular.py](tools/rephrase_choice_singular.py) and [rephrase_choice_plural.py](tools/rephrase_choice_plural.py) generate the Rule-Singular and Rule-Plural validation data, respectively. To run them, just type ```python rephrase_choice_singular.py``` and ```python rephrase_choice_plural.py``` with default arguments.
 
 ### Adversarial modification
+
+This method looks for the token to be masked to maximize the cross-entropy loss.
+<img width="50%" src="g3doc/images/adversarial_eq.png"/>
 
 We use [shortcut_main.py](modeling/shortcut_main.py) to score the effect of removing individual tokens in the answer/rationale.
 Then, we use [format_adversarial_annotations.py](tools/format_adversarial_annotations.py) to merge the results from both answering model and rationale model.
