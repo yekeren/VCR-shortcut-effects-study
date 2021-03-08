@@ -16,8 +16,6 @@ import numpy as np
 import PIL.Image
 import tensorflow as tf
 
-from bert import tokenization
-
 flags.DEFINE_string('annotations_jsonl_file', 'data/vcr1annots/val.jsonl',
                     'Path to the annotations file in jsonl format.')
 
