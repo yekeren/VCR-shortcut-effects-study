@@ -83,7 +83,7 @@ If you found this repository useful or used our data for evaluation, please cite
   author = {Ye, Keren and Kovashka, Adriana},
   title = {A Case Study of the Shortcut Effects in Visual Commonsense Reasoning},
   booktitle = {Proceedings of the Thirty-Fifth AAAI Conference on Artificial Intelligence (AAAI)},
-  month = {Feb},
+  month = {February},
   year = {2021}
 }
 ```
