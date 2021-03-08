@@ -131,8 +131,8 @@ def _create_model_fn(pipeline_proto, is_chief=True):
 
     elif tf.estimator.ModeKeys.PREDICT == mode:
 
-      # # Add input tensors to the predictions.
-      # predictions.update(features)
+      # Add input tensors to the predictions.
+      predictions.update(features)
 
       # Create additional tensors if specified.
       create_additional_predictions = params.get(

@@ -105,14 +105,6 @@ def pack_tensor_values(choices, choices_len, vocab):
 def main(_):
   logging.set_verbosity(logging.DEBUG)
 
-  existing_ids = set()
-  with open(
-      'data/modified_annots/train_answer_shortcut/train_answer_shortcut.jsonl.new',
-      'r') as f:
-    for line in f.readlines():
-      existing_ids.add(json.loads(line)['annot_id'])
-  logging.info('Load %s ids', len(existing_ids))
-
   for gpu in tf.config.experimental.list_physical_devices('GPU'):
     tf.config.experimental.set_memory_growth(gpu, True)
 
@@ -211,9 +203,6 @@ def main(_):
               inputs_batched[model._field_choices_tag][example_id],
               inputs_batched[model._field_choices_len][example_id],
               inputs_batched[model._field_label][example_id])
-          if annot_id in existing_ids:
-            logging.info('skip %s', annot_id)
-            continue
           (num_detections, detection_boxes, detection_clases, detection_scores,
            detection_features) = (
                inputs_batched[InputFields.num_detections][example_id],
