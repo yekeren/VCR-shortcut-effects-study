@@ -40,7 +40,7 @@ Here is an example pipeline to generate [AdvTop-1](data/adversarial_based/val_ad
 We assume the original VCR validation data is located at ```data/vcr1annots/val.jsonl``` and the scoring of the shortcut effects is located at [data/adversarial_based/shortcut_scores.jsonl](data/adversarial_based/shortcut_scores.jsonl). The following command shall generate the ```data/adversarial_based/val_adv_rmtop1.jsonl.v2``` file required for the AdvTop-1 setting.
 
 ```
-python "merge_adversarial_annotations.py" \
+python "tools/merge_adversarial_annotations.py" \
   --logtostderr \
   --annotations_jsonl_file "data/vcr1annots/val.jsonl" \
   --adversarial_annotations_jsonl_file "data/adversarial_based/shortcut_scores.jsonl" \
