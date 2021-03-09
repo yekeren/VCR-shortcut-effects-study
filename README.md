@@ -25,7 +25,7 @@ Please refer to our [cheat.py](tools/cheat.py).
 We count the overlap between the question and answer options and achieved a 29% accuracy (v.s. Random Guess 25%).
 Moreover, we found that more than 65% of the correct options have the most overlapped tags.
 It means that the connection between the questions and answer options provides a strong hint regarding the correct answer.
-Thus, model needs to just find the connection, without performing true reasoning.
+Thus, model could find the connection to answer questions, without performing true reasoning.
 
 <img width="60%" src="g3doc/images/concept.png"/>
 
