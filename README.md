@@ -8,6 +8,7 @@
     -  [Adversarial modification](#adversarial-modification)
        +  [Score the effect of removing tokens](#score-te-effect-of-removing-tokens)
        +  [Generate adversarial settings](#generate-adversarial-settings)
+  * [Model training](#model-training)
   * [Our paper](#our-paper)
 
 ## Introduction
@@ -61,7 +62,26 @@ Then, we use [format_adversarial_annotations.py](tools/format_adversarial_annota
 Finally, we use [merge_adversarial_annotations.py](tools/merge_adversarial_annotations.py) to generate the setting of AdvTop-1, KeepTop-1, KeepTop-3, KeepTop-5, which are used in our Table 4.
 
 #### Score the effect of removing tokens
+We need the answering/rationale models and encoded TF record files to infer the effect of removing individual tokens.
+To get the trained models and the TF record files, please refer to [Model training](#model-training).
+After training the model, we use the [shortcut_main.py](modeling/shortcut_main.py) to score the effect of removing individual tokens in the answer/rationale.
+We provide two example usages here:
+```
+python tools/shortcut_main.py \
+  --logtostderr \
+  --model_dir "PATH_TO_ANSWERING_MODEL" \
+  --pipeline_proto "PATH_TO_ANSWERING_MODEL/pipeline.pbtxt" \
+  --output_jsonl_file "ANSWERING_SCORING.jsonl"
+  
+python tools/shortcut_main.py \
+  --logtostderr \
+  --model_dir "PATH_TO_RATIONALE_MODEL" \
+  --pipeline_proto "PATH_TO_RATIONALE_MODEL/pipeline.pbtxt" \
+  --output_jsonl_file "RATIONALE_SCORING.jsonl" \
+  --rationale
+```
 
+We then use the [format_adversarial_annotations.py](tools/format_adversarial_annotations.py) to merge the two output jsonl files. Simply run ```python tools/format_adversarial_annotations.py```. We have uploaded the final result scoring file to [data/adversarial_based/shortcut_scores.jsonl](data/adversarial_based/shortcut_scores.jsonl).
 
 #### Generate adversarial settings
 Here is an example pipeline to generate [AdvTop-1](data/adversarial_based/val_adv_rmtop1.jsonl) setting.
