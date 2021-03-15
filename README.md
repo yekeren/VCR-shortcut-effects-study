@@ -121,7 +121,15 @@ python "tools/merge_adversarial_annotations.py" \
 
 | original                                                                                                                                           | rule-singular                                                                                                                              | adv-rmtop1                                                                                                                         |
 |----------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| [1] is feeling amused . </br> <b>[1] is upset and disgusted .</b> </br> [1] is feeling very scared . </br> [1] is feeling uncomfortable with [3] . | [1] is feeling amused . </br> He is upset and disgusted . </br> [1] is feeling very scared . </br> [1] is feeling uncomfortable with [3] . | [1] is feeling [MASK] . </br> [MASK] is upset and disgusted . </br> [1] is feeling very [MASK] .  [1] is feeling [MASK] with [3] . |
+| [1] is feeling amused . </br> <b>[1] is upset and disgusted .</b> </br> [1] is feeling very scared . </br> [1] is feeling uncomfortable with [3] . | [1] is feeling amused . </br> He is upset and disgusted . </br> [1] is feeling very scared . </br> [1] is feeling uncomfortable with [3] . | [1] is feeling [MASK] . </br> [MASK] is upset and disgusted . </br> [1] is feeling very [MASK] .  </br>[1] is feeling [MASK] with [3] . |
+
+<img width="60%" src="g3doc/images/val-22.png"/>
+
+[val-22] How does [1] feel right now ?
+
+| original                                                                                                                     | rule-singular                                                                                                        | adv-rmtop1                                                                                                               |
+|------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| <b>[1] is tired and concerned . </b></br> [1] feels admonished . </br> [2] is a bit upset . </br> [1] is aroused and happy . | He is tired and concerned . </br> [1] feels admonished . </br> [1] is a bit upset . </br> [1] is aroused and happy . | [MASK] is tired and concerned . </br> [1] feels [MASK] . </br> [MASK] is a bit upset . </br> [1] is aroused and [MASK] . |
 
 
 
