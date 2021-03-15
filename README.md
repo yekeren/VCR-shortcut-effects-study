@@ -8,6 +8,7 @@
     -  [Adversarial modification](#adversarial-modification)
        +  [Score the effect of removing tokens](#score-te-effect-of-removing-tokens)
        +  [Generate adversarial settings](#generate-adversarial-settings)
+  * [Qualitative examples of the validation data](#qualitative-examples-of-the-validation-data)
   * [Model training](#model-training)
   * [Our paper](#our-paper)
 
@@ -95,6 +96,27 @@ python "tools/merge_adversarial_annotations.py" \
   --output_jsonl_file "data/adversarial_based/val_adv_rmtop1.jsonl.v2" \
   --name "remove_shortcut"
 ```
+## Qualitative examples of the validation data
+
+<img width="60%" src="g3doc/images/val-54.png"/>
+
+[val-54] Where is [2] going ?
+
+| answer label | original                                                                                                                                                                                  | rule-singular                                                                                                                                                                         | adv-rmtop1                                                                                                                                                                                   |
+|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 0            | [2] is going into the store . </br>  [2] is getting into a carriage . </br>  [1] is going to the bathroom . </br>  [1] is going outside to play after the conversation with [2] is over . | He is going into the store . </br> [2] is getting into a carriage . </br> [2] is going to the bathroom . </br> [1] is going outside to play after the conversation with [2] is over . | [MASK] is going into the store . </br>  [2] is getting into a [MASK] . </br>  [MASK] is going to the bathroom . </br>  [1] is [MASK] outside to play after the conversation with [2] is over |
+
+
+<img width="60%" src="g3doc/images/val-270.png"/>
+
+[val-270] What are [1,2] feeling ?
+
+| answer_label | original                                                                                                                                | rule-plural                                                                                                                              | adv-rmtop1                                                                                                                                  |
+|--------------|-----------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| val-270      | [1,2] do not like the restaurant . </br>  They are apprehensive . </br>  They are both feeling happy . </br>  [1,2] are feeling drunk . | [1,2] do not like the restaurant . </br>  [1,2] are apprehensive . </br>  They are both feeling happy . </br>  [1,2] are feeling drunk . | [1,2] do not like the [MASK] . </br>  They are apprehensive [MASK] </br>  They are [MASK] feeling happy . </br>  [1,2] are feeling [MASK] . |
+
+## Model training
+tbd...
 
 ## Our paper
 If you found this repository useful or used our data for evaluation, please cite our paper
