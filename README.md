@@ -131,7 +131,13 @@ python "tools/merge_adversarial_annotations.py" \
 |------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | <b>[1] is tired and concerned . </b></br> [1] feels admonished . </br> [2] is a bit upset . </br> [1] is aroused and happy . | He is tired and concerned . </br> [1] feels admonished . </br> [1] is a bit upset . </br> [1] is aroused and happy . | [MASK] is tired and concerned . </br> [1] feels [MASK] . </br> [MASK] is a bit upset . </br> [1] is aroused and [MASK] . |
 
+<img width="60%" src="g3doc/images/val-171.png"/>
 
+[val-171] What do [2,3] appear to be doing ?
+
+| original                                                                                                                                                                             | rule-plural                                                                                                                                                                    | adv-rmtop1                                                                                                                                                              |
+|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [2,3] are opening the ambulance doors to assist someone . </br> <b>[2,3] are dancing .</b> </br> They are working as security for the building . </br> They are hiding among [1,4] . | [2,3] are opening the ambulance doors to assist someone . </br> They are dancing . </br> [2,3] are working as security for the building . </br> [2,3] are hiding among [1,4] . | [2,3] are opening the [MASK] doors to assist someone . </br> [2,3] are [MASK] . </br> They are working as security for the [MASK] . </br> They are [MASK] among [1,4] . |
 
 ## Model training
 tbd...
