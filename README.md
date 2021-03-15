@@ -139,6 +139,15 @@ python "tools/merge_adversarial_annotations.py" \
 |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | [2,3] are opening the ambulance doors to assist someone . </br> <b>[2,3] are dancing .</b> </br> They are working as security for the building . </br> They are hiding among [1,4] . | [2,3] are opening the ambulance doors to assist someone . </br> They are dancing . </br> [2,3] are working as security for the building . </br> [2,3] are hiding among [1,4] . | [2,3] are opening the [MASK] doors to assist someone . </br> [2,3] are [MASK] . </br> They are working as security for the [MASK] . </br> They are [MASK] among [1,4] . |
 
+
+<img width="60%" src="g3doc/images/val-391.png"/>
+
+[val-391] What is [1] planning on doing ?
+
+| original                                                                                                                                                                           | rule-singular                                                                                                                                                                | adv-rmtop1                                                                                                                                                                     |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| She wants to go to sleep . </br> <b>She is planning to get on [6] . </b></br> [1] is looking to punch [2] in her arm . </br> She is going to play a game with the other children . | [1] wants to go to sleep . </br> She is planning to get on [6] . </br> [1] is looking to punch [2] in her arm . </br> [1] is going to play a game with the other children .  | She wants to go to [MASK] . </br> [MASK] is planning to get on [6] . </br> [1] is looking to [MASK] [2] in her arm . </br> She is going to play a game with the other [MASK] . |
+
 ## Model training
 tbd...
 
